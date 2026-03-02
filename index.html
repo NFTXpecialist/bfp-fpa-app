@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BFP Fire Prevention Accomplishment Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', 'Segoe UI', sans-serif; background: #f0f4ff; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+    input:focus { outline: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useCallback } = React;
+
+    const MUNICIPALITIES = [
+      "Iligan City","Kauswagan","*Linamon","*Munai","*Poona Piagapo",
+      "Balo-i","*Pantar","*Matungao","*Pantao Ragat","*Tagoloan",
+      "Bacolod","Maigo","Kolambugan","*Tangcal","Tubod",
+      "*Magsaysay","Baroy","Lala","Salvador","Kapatagan",
+      "*Nunungan","SND","Sapad"
+    ];
+
+    const OCCUPANCY_TYPES_NC = [
+      { key:"assembly",             label:"Assembly",           col:"B.1"  },
+      { key:"educational",          label:"Educational",        col:"B.3"  },
+      { key:"daycare",              label:"Day Care",           col:"B.5"  },
+      { key:"healthcare",           label:"Health Care",        col:"B.7"  },
+      { key:"residentialBoardCare", label:"Res. Board & Care",  col:"B.9"  },
+      { key:"detentionCorrectional",label:"Detention & Corr.",  col:"B.11" },
+      { key:"hotel",                label:"Hotel",              col:"B.13" },
+      { key:"dormitories",          label:"Dormitories",        col:"B.15" },
+      { key:"apartmentBuilding",    label:"Apartment Bldg.",    col:"B.17" },
+      { key:"lodgingRooming",       label:"Lodging & Rooming",  col:"B.19" },
+      { key:"singleTwoFamily",      label:"Single/Two Family",  col:"B.21" },
+      { key:"mercantile",           label:"Mercantile",         col:"B.23" },
+      { key:"business",             label:"Business",           col:"B.25" },
+      { key:"industrial",           label:"Industrial",         col:"B.27" },
+      { key:"storage",              label:"Storage",            col:"B.29" },
+      { key:"specialStructures",    label:"Special Struct.",     col:"B.31" },
+    ];
+
+    const OCCUPANCY_TYPES_F2 = [
+      { key:"assembly",             label:"Assembly"           },
+      { key:"educational",          label:"Educational"        },
+      { key:"daycare",              label:"Day Care"           },
+      { key:"healthcare",           label:"Health Care"        },
+      { key:"residentialBoardCare", label:"Res. Board & Care"  },
+      { key:"detentionCorrectional",label:"Detention & Corr."  },
+      { key:"hotel",                label:"Hotel"              },
+      { key:"dormitories",          label:"Dormitories"        },
+      { key:"apartmentBuilding",    label:"Apartment Bldg."    },
+      { key:"lodgingRooming",       label:"Lodging & Rooming"  },
+      { key:"singleTwoFamily",      label:"Single/Two Family"  },
+      { key:"mercantile",           label:"Mercantile"         },
+      { key:"business",             label:"Business"           },
+      { key:"industrial",           label:"Industrial"         },
+      { key:"storage",              label:"Storage"            },
+      { key:"specialStructures",    label:"Special Struct."    },
+    ];
+
+    const F5_FEE_TYPES = [
+      { key:"constructionTax",       label:"Fire Code Construction Tax",                                          code:"628-BFP-01",   group:"Fire Code Tax"              },
+      { key:"realtyTax",             label:"Fire Code Realty Tax",                                               code:"628-BFP-02",   group:"Fire Code Tax"              },
+      { key:"premiumTax",            label:"Fire Code Premium Tax",                                              code:"628-BFP-03",   group:"Fire Code Tax"              },
+      { key:"salesTax",              label:"Fire Code Sales Tax",                                                code:"628-BFP-04",   group:"Fire Code Tax"              },
+      { key:"proceedsTax",           label:"Fire Code Proceeds Tax",                                             code:"628-BFP-05",   group:"Fire Code Tax"              },
+      { key:"fsifOccupancy",         label:"Fire Safety Inspection Fee — for Occupancy",                        code:"628-BFP-06",   group:"Fire Safety Inspection Fee" },
+      { key:"fsifBusiness",          label:"Fire Safety Inspection Fee — for Business",                         code:"628-BFP-06",   group:"Fire Safety Inspection Fee" },
+      { key:"storageClearance",      label:"Storage Clearance Fee",                                              code:"628-BFP-07",   group:"Clearance Fees"             },
+      { key:"conveyanceClearance",   label:"Conveyance Clearance Fee",                                          code:"628-BFP-08",   group:"Clearance Fees"             },
+      { key:"installBuildingService",label:"Installation Clearance — Building Service Equipment",               code:"628-BFP-09",   group:"Installation Clearance Fee" },
+      { key:"installAFSS",           label:"Installation Clearance — AFSS",                                     code:"628-BFP-09",   group:"Installation Clearance Fee" },
+      { key:"installFDAS",           label:"Installation Clearance — FDAS",                                     code:"628-BFP-09",   group:"Installation Clearance Fee" },
+      { key:"installKHSS",           label:"Installation Clearance — KHSS",                                     code:"628-BFP-09",   group:"Installation Clearance Fee" },
+      { key:"installFlammable",      label:"Installation Clearance — Flammable & Combustible Liquids Storage",  code:"628-BFP-09",   group:"Installation Clearance Fee" },
+      { key:"installLPGas",          label:"Installation Clearance — LPGAS System",                             code:"628-BFP-09",   group:"Installation Clearance Fee" },
+      { key:"otherInstall",          label:"Installation Clearance — Other (not in group)",                     code:"628-BFP-09",   group:"Installation Clearance Fee" },
+      { key:"adminFines",            label:"Fire Code Administrative Fines",                                     code:"628-BFP-10",   group:"Other Fees"                 },
+      { key:"fireworks",             label:"Fireworks Display",                                                  code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"electricalInstall",     label:"Electrical Installation",                                            code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"filingFsec",            label:"Filing Fees for FSEC",                                              code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"certifiedCopy",         label:"Certified True Copy of FSEC/FSIC/Other Clearances",                 code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"fumigation",            label:"Fumigation/Fogging",                                                 code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"fireIncident",          label:"Fire Incident Clearance",                                            code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"protest",               label:"Protest Fee",                                                        code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"fireDrill",             label:"Fire Drill",                                                         code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"appeal",                label:"Appeal Fee",                                                         code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"openFlame",             label:"Open Flame",                                                         code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"seminar",               label:"Fire Prevention and Safety Seminar",                                 code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"soundstage",            label:"Soundstage and Approved Production Facilities and Locations",        code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"welding",               label:"Welding, Cutting and Other Hotworks",                                code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"otherFees",             label:"Other Fees (not in group and future clearances)",                    code:"628-BFP-11-a", group:"Other Fees"                 },
+      { key:"cocFees",               label:"Certificate of Competency (COC) Fees",                               code:"628-BFP-11-b", group:"COC Fees"                   },
+    ];
+
+    function makeBlankF1() {
+      const occ = {};
+      OCCUPANCY_TYPES_NC.forEach(o => { occ[o.key] = { nc:0, rn:0 }; });
+      return { fsecAppReceived:0, fsecWithin:0, fsecNotWithin:0, totalFsec:0, nod:0,
+               occupancy:occ, overallNC:0, overallRN:0, overallTotal:0,
+               inspectionUnderConstruction:0, fsicWithin:0, fsicNotWithin:0,
+               totalFsicOccupancy:0, ntcNod:0 };
+    }
+    function makeBlankFx() {
+      const occ = {};
+      OCCUPANCY_TYPES_F2.forEach(o => { occ[o.key] = 0; });
+      return { newApps:0, renewalApps:0, totalApps:0, structural:0, occupancy:occ,
+               totalInspected:0, fsicNewWithin:0, fsicNewNotWithin:0,
+               fsicRenewWithin:0, fsicRenewNotWithin:0, totalFsic:0,
+               ntcNonCompliant:0, ntcCompliant:0, ntcvNonCompliant:0, ntcvCompliant:0,
+               abatementNonCompliant:0, abatementCompliant:0, totalCompliant:0,
+               closureOrder:0, closureFailAbatement:0, closureFailPay:0, totalClosure:0,
+               overallInspected:0, overallCompliant:0, totalNonCompliant:0 };
+    }
+    function makeBlankF5() {
+      const d = {};
+      F5_FEE_TYPES.forEach(f => { d[f.key] = 0; });
+      return d;
+    }
+    function initAllData() {
+      const d = {};
+      MUNICIPALITIES.forEach(m => {
+        d[m] = { f1:makeBlankF1(), f2:makeBlankFx(), f3:makeBlankFx(), f4:makeBlankFx(), f5:makeBlankF5() };
+      });
+      return d;
+    }
+
+    // ─── UI helpers ───────────────────────────────────────────────────────────
+    const S = {
+      header: {
+        background:"linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%)",
+        color:"white", padding:"10px 16px", borderRadius:"8px 8px 0 0",
+        fontFamily:"'DM Mono',monospace", fontSize:"13px", fontWeight:"600",
+        letterSpacing:"0.5px", textTransform:"uppercase",
+      },
+      card: {
+        border:"1px solid #e2e8f0", borderRadius:"8px", marginBottom:"14px",
+        boxShadow:"0 2px 8px rgba(0,0,0,0.05)", overflow:"hidden",
+      },
+      body: { padding:"14px 16px", background:"white" },
+      th: { padding:"6px 10px", textAlign:"left", fontFamily:"'DM Mono',monospace",
+            fontSize:"11px", color:"#475569", fontWeight:"600",
+            borderBottom:"2px solid #e2e8f0", background:"#f8fafc" },
+      td: { padding:"5px 10px", color:"#1e293b", fontFamily:"'DM Mono',monospace", fontSize:"12px" },
+      tdc: { padding:"5px 8px", textAlign:"center" },
+    };
+
+    function NumInput({ value, onChange, small }) {
+      return (
+        <input type="number" min="0" value={value}
+          onChange={e => onChange(Number(e.target.value)||0)}
+          onFocus={e => e.target.style.borderColor="#2563eb"}
+          onBlur={e => e.target.style.borderColor="#cbd5e1"}
+          style={{ width:small?"52px":"72px", padding:"3px 5px", fontSize:"12px",
+                   border:"1px solid #cbd5e1", borderRadius:"4px", background:"#f8fafc",
+                   textAlign:"center", color:"#0f172a", fontFamily:"'DM Mono',monospace" }} />
+      );
+    }
+
+    function SectionHeader({ children }) {
+      return <div style={S.header}>{children}</div>;
+    }
+
+    function Card({ children }) {
+      return <div style={S.card}>{children}</div>;
+    }
+
+    function FieldRow({ label, children }) {
+      return (
+        <div style={{ display:"flex", alignItems:"center", gap:"10px",
+                      marginBottom:"7px", flexWrap:"wrap" }}>
+          <span style={{ fontSize:"12px", color:"#475569", minWidth:"180px",
+                         fontFamily:"'DM Mono',monospace" }}>{label}</span>
+          {children}
+        </div>
+      );
+    }
+
+    // ─── F1 Form ──────────────────────────────────────────────────────────────
+    function F1Form({ data, onChange }) {
+      const upd = (f,v) => onChange({...data,[f]:v});
+      const updOcc = (k,s,v) => onChange({...data, occupancy:{...data.occupancy,[k]:{...data.occupancy[k],[s]:v}}});
+      return (
+        <div>
+          <Card>
+            <SectionHeader>FSEC (Fire Safety Evaluation Clearance)</SectionHeader>
+            <div style={S.body}>
+              {[["Applications Received","fsecAppReceived"],["FSEC Issued Within Period","fsecWithin"],
+                ["FSEC Issued NOT Within Period","fsecNotWithin"],["Total FSEC Issued","totalFsec"],
+                ["Notice of Disapproval (NOD)","nod"]].map(([l,k])=>(
+                <FieldRow key={k} label={l}>
+                  <NumInput value={data[k]} onChange={v=>upd(k,v)} />
+                </FieldRow>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <SectionHeader>1st Inspection for FSIC (Occupancy Permit) — By Occupancy Type</SectionHeader>
+            <div style={S.body}>
+              <div style={{overflowX:"auto"}}>
+                <table style={{borderCollapse:"collapse",fontSize:"12px",width:"100%"}}>
+                  <thead>
+                    <tr>
+                      <th style={S.th}>Occupancy Type</th>
+                      <th style={S.th}>NC (New Construction)</th>
+                      <th style={S.th}>RN (Renovation)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {OCCUPANCY_TYPES_NC.map(o=>(
+                      <tr key={o.key} style={{borderBottom:"1px solid #f1f5f9"}}>
+                        <td style={S.td}>{o.label} <span style={{color:"#94a3b8",fontSize:"10px"}}>{o.col}</span></td>
+                        <td style={S.tdc}><NumInput small value={data.occupancy[o.key]?.nc||0} onChange={v=>updOcc(o.key,"nc",v)} /></td>
+                        <td style={S.tdc}><NumInput small value={data.occupancy[o.key]?.rn||0} onChange={v=>updOcc(o.key,"rn",v)} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <SectionHeader>FSIC for Occupancy Permit — Issuances & Summary</SectionHeader>
+            <div style={S.body}>
+              {[["Overall NC","overallNC"],["Overall RN","overallRN"],["Overall Total","overallTotal"],
+                ["Inspection During Construction","inspectionUnderConstruction"],
+                ["FSIC Issued Within Period","fsicWithin"],["FSIC Issued NOT Within Period","fsicNotWithin"],
+                ["Total FSIC for Occupancy","totalFsicOccupancy"],["NTC/NOD for Buildings","ntcNod"]].map(([l,k])=>(
+                <FieldRow key={k} label={l}>
+                  <NumInput value={data[k]} onChange={v=>upd(k,v)} />
+                </FieldRow>
+              ))}
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    // ─── F2/F3/F4 Inspection Form ─────────────────────────────────────────────
+    function InspectionForm({ data, onChange }) {
+      const upd = (f,v) => onChange({...data,[f]:v});
+      const updOcc = (k,v) => onChange({...data, occupancy:{...data.occupancy,[k]:v}});
+      return (
+        <div>
+          <Card>
+            <SectionHeader>Applications Received</SectionHeader>
+            <div style={S.body}>
+              {[["New Applications","newApps"],["Renewal Applications","renewalApps"],["Total Applications","totalApps"]].map(([l,k])=>(
+                <FieldRow key={k} label={l}><NumInput value={data[k]} onChange={v=>upd(k,v)} /></FieldRow>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <SectionHeader>1st Inspection — By Occupancy Type</SectionHeader>
+            <div style={S.body}>
+              <FieldRow label="Structural Inspected:"><NumInput value={data.structural} onChange={v=>upd("structural",v)} /></FieldRow>
+              <div style={{overflowX:"auto",marginTop:"8px"}}>
+                <table style={{borderCollapse:"collapse",fontSize:"12px",width:"100%"}}>
+                  <thead><tr>
+                    <th style={S.th}>Occupancy Type</th>
+                    <th style={S.th}>Count</th>
+                  </tr></thead>
+                  <tbody>
+                    {OCCUPANCY_TYPES_F2.map(o=>(
+                      <tr key={o.key} style={{borderBottom:"1px solid #f1f5f9"}}>
+                        <td style={S.td}>{o.label}</td>
+                        <td style={S.tdc}><NumInput small value={data.occupancy[o.key]||0} onChange={v=>updOcc(o.key,v)} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{marginTop:"10px"}}>
+                <FieldRow label="Total Inspected (1st):"><NumInput value={data.totalInspected} onChange={v=>upd("totalInspected",v)} /></FieldRow>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <SectionHeader>FSIC Issuances</SectionHeader>
+            <div style={S.body}>
+              {[["New FSIC — Within Period","fsicNewWithin"],["New FSIC — NOT Within Period","fsicNewNotWithin"],
+                ["Renewal FSIC — Within Period","fsicRenewWithin"],["Renewal FSIC — NOT Within Period","fsicRenewNotWithin"],
+                ["Total FSIC Issued","totalFsic"]].map(([l,k])=>(
+                <FieldRow key={k} label={l}><NumInput value={data[k]} onChange={v=>upd(k,v)} /></FieldRow>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <SectionHeader>Re-Inspection / Compliance Actions</SectionHeader>
+            <div style={S.body}>
+              {[["NTC Non-Compliant","ntcNonCompliant"],["NTC Compliant (FSIC issued)","ntcCompliant"],
+                ["NTCV Non-Compliant","ntcvNonCompliant"],["NTCV Compliant (FSIC issued)","ntcvCompliant"],
+                ["Abatement Non-Compliant","abatementNonCompliant"],["Abatement Compliant","abatementCompliant"],
+                ["Total Compliant (Re-Inspection)","totalCompliant"],["Closure Order","closureOrder"],
+                ["Closure — Fail Abatement Order","closureFailAbatement"],["Closure — Fail to Pay Fine","closureFailPay"],
+                ["Total Closure Orders Issued","totalClosure"]].map(([l,k])=>(
+                <FieldRow key={k} label={l}><NumInput value={data[k]} onChange={v=>upd(k,v)} /></FieldRow>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <SectionHeader>Overall Summary</SectionHeader>
+            <div style={S.body}>
+              {[["Overall No. Inspected","overallInspected"],["Overall No. Compliant","overallCompliant"],
+                ["Total Non-Compliant After Re-Inspection","totalNonCompliant"]].map(([l,k])=>(
+                <FieldRow key={k} label={l}><NumInput value={data[k]} onChange={v=>upd(k,v)} /></FieldRow>
+              ))}
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    // ─── F5 Form ──────────────────────────────────────────────────────────────
+    function F5Form({ data, onChange }) {
+      const upd = (k,v) => onChange({...data,[k]:v});
+      const groups = [...new Set(F5_FEE_TYPES.map(f=>f.group))];
+      const total = F5_FEE_TYPES.reduce((s,f)=>s+(Number(data[f.key])||0), 0);
+
+      return (
+        <div>
+          {/* Total Banner */}
+          <div style={{
+            background:"linear-gradient(135deg,#0f2447,#2563eb)", borderRadius:"10px",
+            padding:"14px 20px", display:"flex", justifyContent:"space-between",
+            alignItems:"center", marginBottom:"14px",
+            boxShadow:"0 4px 14px rgba(37,99,235,0.3)"
+          }}>
+            <div>
+              <div style={{color:"rgba(255,255,255,0.7)",fontFamily:"'DM Mono',monospace",fontSize:"11px",marginBottom:"2px"}}>
+                FORM 5/5 — FIRE CODE FEES COLLECTION
+              </div>
+              <div style={{color:"rgba(255,255,255,0.55)",fontFamily:"'DM Mono',monospace",fontSize:"10px"}}>
+                All Fee Categories (BFP-01 through BFP-11-b)
+              </div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{color:"rgba(255,255,255,0.6)",fontSize:"11px",fontFamily:"'DM Mono',monospace",marginBottom:"2px"}}>TOTAL COLLECTION</div>
+              <div style={{color:"white",fontFamily:"'DM Mono',monospace",fontSize:"22px",fontWeight:"700"}}>
+                ₱ {total.toLocaleString()}
+              </div>
+            </div>
+          </div>
+
+          {groups.map(group => {
+            const fees = F5_FEE_TYPES.filter(f=>f.group===group);
+            const subtotal = fees.reduce((s,f)=>s+(Number(data[f.key])||0),0);
+            return (
+              <Card key={group}>
+                <div style={{
+                  ...S.header,
+                  display:"flex", justifyContent:"space-between", alignItems:"center"
+                }}>
+                  <span>{group}</span>
+                  <span style={{fontSize:"11px",opacity:0.75,fontWeight:"400"}}>
+                    Subtotal: ₱ {subtotal.toLocaleString()}
+                  </span>
+                </div>
+                <div style={S.body}>
+                  {fees.map(f=>(
+                    <div key={f.key} style={{
+                      display:"flex", alignItems:"center", gap:"10px", marginBottom:"7px",
+                      padding:"7px 10px", borderRadius:"6px", background:"#f8fafc",
+                      border:"1px solid #e2e8f0"
+                    }}>
+                      <span style={{
+                        background:"#1e3a5f", color:"white",
+                        fontFamily:"'DM Mono',monospace", fontSize:"10px",
+                        padding:"3px 8px", borderRadius:"4px", whiteSpace:"nowrap",
+                        letterSpacing:"0.3px", minWidth:"105px", textAlign:"center"
+                      }}>
+                        {f.code}
+                      </span>
+                      <span style={{flex:1, fontSize:"12px", color:"#334155"}}>
+                        {f.label}
+                      </span>
+                      <NumInput value={data[f.key]||0} onChange={v=>upd(f.key,v)} />
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // ─── Export ───────────────────────────────────────────────────────────────
+    function exportToExcel(allData, reportDate) {
+      const wb = XLSX.utils.book_new();
+
+      // F1
+      const f1rows = [
+        ["Republic of the Philippines"],
+        ["Department of the Interior and Local Government"],
+        ["BUREAU OF FIRE PROTECTION"],
+        [],
+        ["NATIONWIDE ACCOMPLISHMENT REPORT ON FIRE SAFETY EVALUATION/INSPECTION ACTIVITIES AND SUMMARY ACCOMPLISHMENT ON FIRE CODE FEES COLLECTION"],
+        [reportDate],
+        ["","FORM 1/5"],
+        ["","NEWLY CONSTRUCTED BUILDING, (RENOVATION, REPAIR, MODIFIED)"],
+        ["","City/Municipality","FSEC — Applications Received","FSEC Within Period","FSEC NOT Within","Total FSEC","NOD",
+          ...OCCUPANCY_TYPES_NC.flatMap(o=>[o.label+" NC",o.label+" RN"]),
+          "Overall NC","Overall RN","Overall Total","Under Construction",
+          "FSIC Within","FSIC NOT Within","Total FSIC for Occupancy","NTC/NOD"],
+      ];
+      MUNICIPALITIES.forEach(m => {
+        const d = allData[m]?.f1 || makeBlankF1();
+        const row = ["",m, d.fsecAppReceived, d.fsecWithin, d.fsecNotWithin, d.totalFsec, d.nod];
+        OCCUPANCY_TYPES_NC.forEach(o => { row.push(d.occupancy[o.key]?.nc||0, d.occupancy[o.key]?.rn||0); });
+        row.push(d.overallNC,d.overallRN,d.overallTotal,d.inspectionUnderConstruction,
+                 d.fsicWithin,d.fsicNotWithin,d.totalFsicOccupancy,d.ntcNod);
+        f1rows.push(row);
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(f1rows), "F1_Newly Constructed Building");
+
+      // F2/F3/F4 helper
+      const fxSheet = (fKey, formLabel, sheetName) => {
+        const rows = [
+          [formLabel],
+          ["City/Municipality","New Apps","Renewal Apps","Total Apps","Structural",
+            ...OCCUPANCY_TYPES_F2.map(o=>o.label),
+            "Total Inspected","FSIC New Within","FSIC New NOT Within",
+            "FSIC Renew Within","FSIC Renew NOT Within","Total FSIC",
+            "NTC Non-Compliant","NTC Compliant","NTCV Non-Compliant","NTCV Compliant",
+            "Abatement Non-Comp","Abatement Compliant","Total Compliant Re-Insp","Closure Order",
+            "Closure Fail Abatement","Closure Fail Pay","Total Closure",
+            "Overall Inspected","Overall Compliant","Total Non-Compliant"],
+        ];
+        MUNICIPALITIES.forEach(m => {
+          const d = allData[m]?.[fKey] || makeBlankFx();
+          rows.push([m, d.newApps, d.renewalApps, d.totalApps, d.structural,
+            ...OCCUPANCY_TYPES_F2.map(o=>d.occupancy[o.key]||0),
+            d.totalInspected, d.fsicNewWithin, d.fsicNewNotWithin,
+            d.fsicRenewWithin, d.fsicRenewNotWithin, d.totalFsic,
+            d.ntcNonCompliant, d.ntcCompliant, d.ntcvNonCompliant, d.ntcvCompliant,
+            d.abatementNonCompliant, d.abatementCompliant, d.totalCompliant, d.closureOrder,
+            d.closureFailAbatement, d.closureFailPay, d.totalClosure,
+            d.overallInspected, d.overallCompliant, d.totalNonCompliant]);
+        });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), sheetName);
+      };
+      fxSheet("f2","FORM 2/5 — FOR BUSINESS OPERATIONS","F2_For Business Operations");
+      fxSheet("f3","FORM 6 — FOR PEZA/OTHER ECONOMIC ZONE ESTABLISHMENTS","F3_For PEZA Establishments");
+      fxSheet("f4","FORM 4/5 — FOR GOVERNMENT BUILDINGS","F4_For Government Buildings");
+
+      // F5
+      const f5rows = [
+        [" SUMMARY ACCOMPLISHMENT REPORT ON FIRE CODE FEES COLLECTION "],
+        [reportDate],
+        ["","FORM 5/5"],
+        ["City/Municipality",...F5_FEE_TYPES.map(f=>`${f.code} — ${f.label}`),"Total"],
+      ];
+      MUNICIPALITIES.forEach(m => {
+        const d = allData[m]?.f5 || makeBlankF5();
+        const fees = F5_FEE_TYPES.map(f=>Number(d[f.key])||0);
+        f5rows.push([m,...fees, fees.reduce((a,b)=>a+b,0)]);
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(f5rows), "F5_Summary Accomplishment Rep");
+
+      XLSX.writeFile(wb, `FPA_Report_${reportDate.replace(/\s+/g,"_")}.xlsx`);
+    }
+
+    // ─── Main App ─────────────────────────────────────────────────────────────
+    function App() {
+      const [allData, setAllData] = useState(initAllData);
+      const [selectedMuni, setSelectedMuni] = useState(MUNICIPALITIES[0]);
+      const [activeForm, setActiveForm] = useState("F1");
+      const [reportDate, setReportDate] = useState("JANUARY 2026");
+      const [exporting, setExporting] = useState(false);
+
+      const updateForm = useCallback((form, val) => {
+        setAllData(prev => ({
+          ...prev,
+          [selectedMuni]: { ...prev[selectedMuni], [form]: val }
+        }));
+      }, [selectedMuni]);
+
+      const currentData = allData[selectedMuni] || {};
+
+      const FORMS = [
+        { id:"F1", label:"F1 — New Construction" },
+        { id:"F2", label:"F2 — Business Ops" },
+        { id:"F3", label:"F3 — PEZA" },
+        { id:"F4", label:"F4 — Government" },
+        { id:"F5", label:"F5 — Fee Collection" },
+      ];
+
+      const handleExport = () => {
+        setExporting(true);
+        setTimeout(() => {
+          try { exportToExcel(allData, reportDate); }
+          catch(e) { alert("Export error: "+e.message); }
+          setExporting(false);
+        }, 100);
+      };
+
+      return (
+        <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#f0f4ff,#e8f0fe)",display:"flex",flexDirection:"column"}}>
+          {/* Header */}
+          <div style={{
+            background:"linear-gradient(135deg,#0f2447 0%,#1e3a5f 60%,#2563eb 100%)",
+            padding:"14px 20px", display:"flex", alignItems:"center", justifyContent:"space-between",
+            boxShadow:"0 4px 20px rgba(0,0,0,0.25)", flexShrink:0,
+          }}>
+            <div style={{display:"flex",alignItems:"center",gap:"14px"}}>
+              <div style={{width:"40px",height:"40px",borderRadius:"10px",
+                           background:"rgba(255,255,255,0.12)",display:"flex",
+                           alignItems:"center",justifyContent:"center",fontSize:"20px"}}>🔥</div>
+              <div>
+                <div style={{color:"white",fontWeight:"700",fontSize:"15px"}}>Bureau of Fire Protection</div>
+                <div style={{color:"rgba(255,255,255,0.6)",fontSize:"11px",fontFamily:"'DM Mono',monospace"}}>
+                  Fire Prevention Accomplishment Report System
+                </div>
+              </div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+              <input value={reportDate} onChange={e=>setReportDate(e.target.value)}
+                style={{ background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.3)",
+                         borderRadius:"6px", color:"white", padding:"6px 12px",
+                         fontSize:"12px", fontFamily:"'DM Mono',monospace", width:"145px" }}
+                placeholder="e.g. JANUARY 2026" />
+              <button onClick={handleExport} disabled={exporting} style={{
+                background: exporting ? "#64748b" : "linear-gradient(135deg,#16a34a,#15803d)",
+                color:"white", border:"none", borderRadius:"8px", padding:"8px 16px",
+                cursor: exporting ? "default" : "pointer", fontWeight:"600", fontSize:"13px",
+                boxShadow:"0 2px 8px rgba(22,163,74,0.35)", fontFamily:"'DM Sans',sans-serif"
+              }}>
+                {exporting ? "⏳ Exporting..." : "⬇ Export Excel"}
+              </button>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div style={{display:"flex",flex:1,overflow:"hidden",height:"calc(100vh - 68px)"}}>
+            {/* Sidebar */}
+            <div style={{
+              width:"185px",minWidth:"185px",background:"#1e293b",
+              overflowY:"auto",padding:"10px 0",flexShrink:0,
+            }}>
+              <div style={{padding:"8px 14px",color:"#475569",fontSize:"9px",
+                           letterSpacing:"1.2px",fontFamily:"'DM Mono',monospace",
+                           textTransform:"uppercase",marginBottom:"2px"}}>
+                Municipalities
+              </div>
+              {MUNICIPALITIES.map(m=>(
+                <div key={m} onClick={()=>setSelectedMuni(m)} style={{
+                  padding:"7px 14px", cursor:"pointer", fontSize:"11px",
+                  fontFamily:"'DM Mono',monospace",
+                  color: selectedMuni===m ? "white" : "#94a3b8",
+                  background: selectedMuni===m ? "rgba(37,99,235,0.35)" : "transparent",
+                  borderLeft: selectedMuni===m ? "3px solid #2563eb" : "3px solid transparent",
+                  transition:"all 0.12s",
+                }}>
+                  {m}
+                </div>
+              ))}
+            </div>
+
+            {/* Main */}
+            <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+              {/* Tabs */}
+              <div style={{
+                display:"flex",gap:"2px",padding:"10px 14px 0",
+                background:"#f1f5f9",borderBottom:"1px solid #e2e8f0",flexShrink:0,
+              }}>
+                {FORMS.map(f=>(
+                  <button key={f.id} onClick={()=>setActiveForm(f.id)} style={{
+                    padding:"7px 14px", border:"none", borderRadius:"7px 7px 0 0",
+                    cursor:"pointer", fontSize:"12px", fontFamily:"'DM Mono',monospace",
+                    fontWeight:"600",
+                    background: activeForm===f.id ? "white" : "transparent",
+                    color: activeForm===f.id ? "#1e3a5f" : "#64748b",
+                    borderBottom: activeForm===f.id ? "2px solid #2563eb" : "2px solid transparent",
+                    transition:"all 0.12s",
+                  }}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Form Area */}
+              <div style={{flex:1,overflowY:"auto",padding:"14px 16px"}}>
+                {/* Location breadcrumb */}
+                <div style={{
+                  marginBottom:"12px", background:"white", borderRadius:"8px",
+                  padding:"9px 14px", border:"1px solid #e2e8f0",
+                  display:"flex", alignItems:"center", gap:"8px",
+                }}>
+                  <span style={{fontSize:"14px"}}>📍</span>
+                  <span style={{fontWeight:"700",color:"#1e3a5f",fontSize:"13px"}}>{selectedMuni}</span>
+                  <span style={{color:"#94a3b8",fontSize:"12px"}}>
+                    — {FORMS.find(f=>f.id===activeForm)?.label}
+                  </span>
+                </div>
+
+                {activeForm==="F1" && <F1Form data={currentData.f1} onChange={v=>updateForm("f1",v)} />}
+                {activeForm==="F2" && <InspectionForm data={currentData.f2} onChange={v=>updateForm("f2",v)} />}
+                {activeForm==="F3" && <InspectionForm data={currentData.f3} onChange={v=>updateForm("f3",v)} />}
+                {activeForm==="F4" && <InspectionForm data={currentData.f4} onChange={v=>updateForm("f4",v)} />}
+                {activeForm==="F5" && <F5Form data={currentData.f5} onChange={v=>updateForm("f5",v)} />}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
