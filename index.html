@@ -1,632 +1,1078 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BFP Fire Prevention Accomplishment Report</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>BFP Iligan City — FPA Report System</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+
+  <!-- React -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+  <!-- Firebase v10 (modular via compat shim — works in plain HTML) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <!-- SheetJS Excel export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'DM Sans', 'Segoe UI', sans-serif; background: #f0f4ff; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #f1f5f9; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-    input[type=number]::-webkit-inner-spin-button { opacity: 1; }
-    input:focus { outline: none; }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%}
+    body{font-family:'Inter',sans-serif;background:#080e1a;color:#e2e8f0;overflow:hidden}
+    #root{height:100vh;display:flex;flex-direction:column}
+    ::-webkit-scrollbar{width:5px;height:5px}
+    ::-webkit-scrollbar-track{background:#111827}
+    ::-webkit-scrollbar-thumb{background:#374151;border-radius:3px}
+    input:focus,select:focus,textarea:focus{outline:none}
+    input[type=number]::-webkit-inner-spin-button{opacity:1}
+    .fade{animation:fi .15s ease both}
+    @keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+    .pulse{animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
   </style>
 </head>
 <body>
-  <div id="root"></div>
+<div id="root"></div>
 
-  <script type="text/babel">
-    const { useState, useCallback } = React;
+<script type="text/babel">
+const {useState,useEffect,useRef,useMemo,useCallback}=React;
 
-    const MUNICIPALITIES = [
-      "Iligan City","Kauswagan","*Linamon","*Munai","*Poona Piagapo",
-      "Balo-i","*Pantar","*Matungao","*Pantao Ragat","*Tagoloan",
-      "Bacolod","Maigo","Kolambugan","*Tangcal","Tubod",
-      "*Magsaysay","Baroy","Lala","Salvador","Kapatagan",
-      "*Nunungan","SND","Sapad"
-    ];
+/* ══════════════════════════════════════════════════════════════
+   CONSTANTS
+══════════════════════════════════════════════════════════════ */
+const OCC_NC=[
+  {key:"assembly",label:"Assembly",col:"B.1"},
+  {key:"educational",label:"Educational",col:"B.3"},
+  {key:"daycare",label:"Day Care",col:"B.5"},
+  {key:"healthcare",label:"Health Care",col:"B.7"},
+  {key:"residentialBoardCare",label:"Res. Board & Care",col:"B.9"},
+  {key:"detentionCorrectional",label:"Detention & Corr.",col:"B.11"},
+  {key:"hotel",label:"Hotel",col:"B.13"},
+  {key:"dormitories",label:"Dormitories",col:"B.15"},
+  {key:"apartmentBuilding",label:"Apartment Bldg.",col:"B.17"},
+  {key:"lodgingRooming",label:"Lodging & Rooming",col:"B.19"},
+  {key:"singleTwoFamily",label:"Single/Two Family",col:"B.21"},
+  {key:"mercantile",label:"Mercantile",col:"B.23"},
+  {key:"business",label:"Business",col:"B.25"},
+  {key:"industrial",label:"Industrial",col:"B.27"},
+  {key:"storage",label:"Storage",col:"B.29"},
+  {key:"specialStructures",label:"Special Struct.",col:"B.31"},
+];
+const OCC_FX=[
+  {key:"assembly",label:"Assembly"},{key:"educational",label:"Educational"},
+  {key:"daycare",label:"Day Care"},{key:"healthcare",label:"Health Care"},
+  {key:"residentialBoardCare",label:"Res. Board & Care"},{key:"detentionCorrectional",label:"Detention & Corr."},
+  {key:"hotel",label:"Hotel"},{key:"dormitories",label:"Dormitories"},
+  {key:"apartmentBuilding",label:"Apartment Bldg."},{key:"lodgingRooming",label:"Lodging & Rooming"},
+  {key:"singleTwoFamily",label:"Single/Two Family"},{key:"mercantile",label:"Mercantile"},
+  {key:"business",label:"Business"},{key:"industrial",label:"Industrial"},
+  {key:"storage",label:"Storage"},{key:"specialStructures",label:"Special Struct."},
+];
+const F5_FEES=[
+  {key:"constructionTax",label:"Fire Code Construction Tax",code:"628-BFP-01",group:"Fire Code Tax"},
+  {key:"realtyTax",label:"Fire Code Realty Tax",code:"628-BFP-02",group:"Fire Code Tax"},
+  {key:"premiumTax",label:"Fire Code Premium Tax",code:"628-BFP-03",group:"Fire Code Tax"},
+  {key:"salesTax",label:"Fire Code Sales Tax",code:"628-BFP-04",group:"Fire Code Tax"},
+  {key:"proceedsTax",label:"Fire Code Proceeds Tax",code:"628-BFP-05",group:"Fire Code Tax"},
+  {key:"fsifOccupancy",label:"FSIF — for Occupancy",code:"628-BFP-06",group:"Fire Safety Inspection Fee"},
+  {key:"fsifBusiness",label:"FSIF — for Business",code:"628-BFP-06",group:"Fire Safety Inspection Fee"},
+  {key:"storageClearance",label:"Storage Clearance Fee",code:"628-BFP-07",group:"Clearance Fees"},
+  {key:"conveyanceClearance",label:"Conveyance Clearance Fee",code:"628-BFP-08",group:"Clearance Fees"},
+  {key:"installBuildingService",label:"Install. — Building Service Equip.",code:"628-BFP-09",group:"Installation Clearance"},
+  {key:"installAFSS",label:"Install. — AFSS",code:"628-BFP-09",group:"Installation Clearance"},
+  {key:"installFDAS",label:"Install. — FDAS",code:"628-BFP-09",group:"Installation Clearance"},
+  {key:"installKHSS",label:"Install. — KHSS",code:"628-BFP-09",group:"Installation Clearance"},
+  {key:"installFlammable",label:"Install. — Flammable & Combustible Liquids",code:"628-BFP-09",group:"Installation Clearance"},
+  {key:"installLPGas",label:"Install. — LPGAS System",code:"628-BFP-09",group:"Installation Clearance"},
+  {key:"otherInstall",label:"Install. — Other (not in group)",code:"628-BFP-09",group:"Installation Clearance"},
+  {key:"adminFines",label:"Fire Code Administrative Fines",code:"628-BFP-10",group:"Other Fees"},
+  {key:"fireworks",label:"Fireworks Display",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"electricalInstall",label:"Electrical Installation",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"filingFsec",label:"Filing Fees for FSEC",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"certifiedCopy",label:"Certified True Copy (FSEC/FSIC)",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"fumigation",label:"Fumigation / Fogging",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"fireIncident",label:"Fire Incident Clearance",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"protest",label:"Protest Fee",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"fireDrill",label:"Fire Drill",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"appeal",label:"Appeal Fee",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"openFlame",label:"Open Flame",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"seminar",label:"Fire Prevention & Safety Seminar",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"soundstage",label:"Soundstage / Production Facilities",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"welding",label:"Welding, Cutting & Hotworks",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"otherFees",label:"Other Fees (not in group)",code:"628-BFP-11-a",group:"Other Fees"},
+  {key:"cocFees",label:"Certificate of Competency (COC) Fees",code:"628-BFP-11-b",group:"COC Fees"},
+];
+const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+const GC={"Fire Code Tax":"#2563eb","Fire Safety Inspection Fee":"#0f766e",
+  "Clearance Fees":"#7c3aed","Installation Clearance":"#b45309","Other Fees":"#be123c","COC Fees":"#047857"};
+const T={
+  bg:"#080e1a",surf:"#0f1929",surf2:"#162034",brd:"#1e2d45",
+  acc:"#3b82f6",accDk:"#1d4ed8",
+  grn:"#10b981",red:"#ef4444",amb:"#f59e0b",pur:"#8b5cf6",cyn:"#06b6d4",
+  txt:"#e2e8f0",sub:"#94a3b8",muted:"#4b5563",
+};
 
-    const OCCUPANCY_TYPES_NC = [
-      { key:"assembly",             label:"Assembly",           col:"B.1"  },
-      { key:"educational",          label:"Educational",        col:"B.3"  },
-      { key:"daycare",              label:"Day Care",           col:"B.5"  },
-      { key:"healthcare",           label:"Health Care",        col:"B.7"  },
-      { key:"residentialBoardCare", label:"Res. Board & Care",  col:"B.9"  },
-      { key:"detentionCorrectional",label:"Detention & Corr.",  col:"B.11" },
-      { key:"hotel",                label:"Hotel",              col:"B.13" },
-      { key:"dormitories",          label:"Dormitories",        col:"B.15" },
-      { key:"apartmentBuilding",    label:"Apartment Bldg.",    col:"B.17" },
-      { key:"lodgingRooming",       label:"Lodging & Rooming",  col:"B.19" },
-      { key:"singleTwoFamily",      label:"Single/Two Family",  col:"B.21" },
-      { key:"mercantile",           label:"Mercantile",         col:"B.23" },
-      { key:"business",             label:"Business",           col:"B.25" },
-      { key:"industrial",           label:"Industrial",         col:"B.27" },
-      { key:"storage",              label:"Storage",            col:"B.29" },
-      { key:"specialStructures",    label:"Special Struct.",     col:"B.31" },
-    ];
+/* ══════════════════════════════════════════════════════════════
+   BLANK RECORDS
+══════════════════════════════════════════════════════════════ */
+const bF1=()=>{const o={};OCC_NC.forEach(x=>{o[x.key]={nc:0,rn:0}});
+  return{fsecAppReceived:0,fsecWithin:0,fsecNotWithin:0,totalFsec:0,nod:0,occupancy:o,
+    overallNC:0,overallRN:0,overallTotal:0,inspectionUnderConstruction:0,
+    fsicWithin:0,fsicNotWithin:0,totalFsicOccupancy:0,ntcNod:0};};
+const bFx=()=>{const o={};OCC_FX.forEach(x=>{o[x.key]=0});
+  return{newApps:0,renewalApps:0,totalApps:0,structural:0,occupancy:o,
+    totalInspected:0,fsicNewWithin:0,fsicNewNotWithin:0,fsicRenewWithin:0,fsicRenewNotWithin:0,
+    totalFsic:0,ntcNonCompliant:0,ntcCompliant:0,ntcvNonCompliant:0,ntcvCompliant:0,
+    abatementNonCompliant:0,abatementCompliant:0,totalCompliant:0,closureOrder:0,
+    closureFailAbatement:0,closureFailPay:0,totalClosure:0,
+    overallInspected:0,overallCompliant:0,totalNonCompliant:0};};
+const bF5=()=>{const d={};F5_FEES.forEach(f=>{d[f.key]=0});return d;};
+const bRec=()=>({f1:bF1(),f2:bFx(),f3:bFx(),f4:bFx(),f5:bF5()});
 
-    const OCCUPANCY_TYPES_F2 = [
-      { key:"assembly",             label:"Assembly"           },
-      { key:"educational",          label:"Educational"        },
-      { key:"daycare",              label:"Day Care"           },
-      { key:"healthcare",           label:"Health Care"        },
-      { key:"residentialBoardCare", label:"Res. Board & Care"  },
-      { key:"detentionCorrectional",label:"Detention & Corr."  },
-      { key:"hotel",                label:"Hotel"              },
-      { key:"dormitories",          label:"Dormitories"        },
-      { key:"apartmentBuilding",    label:"Apartment Bldg."    },
-      { key:"lodgingRooming",       label:"Lodging & Rooming"  },
-      { key:"singleTwoFamily",      label:"Single/Two Family"  },
-      { key:"mercantile",           label:"Mercantile"         },
-      { key:"business",             label:"Business"           },
-      { key:"industrial",           label:"Industrial"         },
-      { key:"storage",              label:"Storage"            },
-      { key:"specialStructures",    label:"Special Struct."    },
-    ];
+/* ══════════════════════════════════════════════════════════════
+   FIREBASE HOOK
+══════════════════════════════════════════════════════════════ */
+function useFirebase(cfg){
+  const [db,setDb]=useState(null);
+  const [status,setStatus]=useState("disconnected"); // disconnected | connecting | connected | error
+  const [records,setRecords]=useState([]);
+  const unsubRef=useRef(null);
 
-    const F5_FEE_TYPES = [
-      { key:"constructionTax",       label:"Fire Code Construction Tax",                                          code:"628-BFP-01",   group:"Fire Code Tax"              },
-      { key:"realtyTax",             label:"Fire Code Realty Tax",                                               code:"628-BFP-02",   group:"Fire Code Tax"              },
-      { key:"premiumTax",            label:"Fire Code Premium Tax",                                              code:"628-BFP-03",   group:"Fire Code Tax"              },
-      { key:"salesTax",              label:"Fire Code Sales Tax",                                                code:"628-BFP-04",   group:"Fire Code Tax"              },
-      { key:"proceedsTax",           label:"Fire Code Proceeds Tax",                                             code:"628-BFP-05",   group:"Fire Code Tax"              },
-      { key:"fsifOccupancy",         label:"Fire Safety Inspection Fee — for Occupancy",                        code:"628-BFP-06",   group:"Fire Safety Inspection Fee" },
-      { key:"fsifBusiness",          label:"Fire Safety Inspection Fee — for Business",                         code:"628-BFP-06",   group:"Fire Safety Inspection Fee" },
-      { key:"storageClearance",      label:"Storage Clearance Fee",                                              code:"628-BFP-07",   group:"Clearance Fees"             },
-      { key:"conveyanceClearance",   label:"Conveyance Clearance Fee",                                          code:"628-BFP-08",   group:"Clearance Fees"             },
-      { key:"installBuildingService",label:"Installation Clearance — Building Service Equipment",               code:"628-BFP-09",   group:"Installation Clearance Fee" },
-      { key:"installAFSS",           label:"Installation Clearance — AFSS",                                     code:"628-BFP-09",   group:"Installation Clearance Fee" },
-      { key:"installFDAS",           label:"Installation Clearance — FDAS",                                     code:"628-BFP-09",   group:"Installation Clearance Fee" },
-      { key:"installKHSS",           label:"Installation Clearance — KHSS",                                     code:"628-BFP-09",   group:"Installation Clearance Fee" },
-      { key:"installFlammable",      label:"Installation Clearance — Flammable & Combustible Liquids Storage",  code:"628-BFP-09",   group:"Installation Clearance Fee" },
-      { key:"installLPGas",          label:"Installation Clearance — LPGAS System",                             code:"628-BFP-09",   group:"Installation Clearance Fee" },
-      { key:"otherInstall",          label:"Installation Clearance — Other (not in group)",                     code:"628-BFP-09",   group:"Installation Clearance Fee" },
-      { key:"adminFines",            label:"Fire Code Administrative Fines",                                     code:"628-BFP-10",   group:"Other Fees"                 },
-      { key:"fireworks",             label:"Fireworks Display",                                                  code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"electricalInstall",     label:"Electrical Installation",                                            code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"filingFsec",            label:"Filing Fees for FSEC",                                              code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"certifiedCopy",         label:"Certified True Copy of FSEC/FSIC/Other Clearances",                 code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"fumigation",            label:"Fumigation/Fogging",                                                 code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"fireIncident",          label:"Fire Incident Clearance",                                            code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"protest",               label:"Protest Fee",                                                        code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"fireDrill",             label:"Fire Drill",                                                         code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"appeal",                label:"Appeal Fee",                                                         code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"openFlame",             label:"Open Flame",                                                         code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"seminar",               label:"Fire Prevention and Safety Seminar",                                 code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"soundstage",            label:"Soundstage and Approved Production Facilities and Locations",        code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"welding",               label:"Welding, Cutting and Other Hotworks",                                code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"otherFees",             label:"Other Fees (not in group and future clearances)",                    code:"628-BFP-11-a", group:"Other Fees"                 },
-      { key:"cocFees",               label:"Certificate of Competency (COC) Fees",                               code:"628-BFP-11-b", group:"COC Fees"                   },
-    ];
+  useEffect(()=>{
+    if(!cfg?.apiKey||!cfg?.projectId){setStatus("disconnected");return;}
+    setStatus("connecting");
+    try{
+      // Delete existing app if reconfiguring
+      const existing=firebase.apps.find(a=>a.name==="bfp");
+      if(existing) existing.delete();
 
-    function makeBlankF1() {
-      const occ = {};
-      OCCUPANCY_TYPES_NC.forEach(o => { occ[o.key] = { nc:0, rn:0 }; });
-      return { fsecAppReceived:0, fsecWithin:0, fsecNotWithin:0, totalFsec:0, nod:0,
-               occupancy:occ, overallNC:0, overallRN:0, overallTotal:0,
-               inspectionUnderConstruction:0, fsicWithin:0, fsicNotWithin:0,
-               totalFsicOccupancy:0, ntcNod:0 };
-    }
-    function makeBlankFx() {
-      const occ = {};
-      OCCUPANCY_TYPES_F2.forEach(o => { occ[o.key] = 0; });
-      return { newApps:0, renewalApps:0, totalApps:0, structural:0, occupancy:occ,
-               totalInspected:0, fsicNewWithin:0, fsicNewNotWithin:0,
-               fsicRenewWithin:0, fsicRenewNotWithin:0, totalFsic:0,
-               ntcNonCompliant:0, ntcCompliant:0, ntcvNonCompliant:0, ntcvCompliant:0,
-               abatementNonCompliant:0, abatementCompliant:0, totalCompliant:0,
-               closureOrder:0, closureFailAbatement:0, closureFailPay:0, totalClosure:0,
-               overallInspected:0, overallCompliant:0, totalNonCompliant:0 };
-    }
-    function makeBlankF5() {
-      const d = {};
-      F5_FEE_TYPES.forEach(f => { d[f.key] = 0; });
-      return d;
-    }
-    function initAllData() {
-      const d = {};
-      MUNICIPALITIES.forEach(m => {
-        d[m] = { f1:makeBlankF1(), f2:makeBlankFx(), f3:makeBlankFx(), f4:makeBlankFx(), f5:makeBlankF5() };
-      });
-      return d;
-    }
+      const app=firebase.initializeApp({
+        apiKey:cfg.apiKey,
+        authDomain:`${cfg.projectId}.firebaseapp.com`,
+        projectId:cfg.projectId,
+      },"bfp");
+      const firestore=firebase.firestore(app);
+      setDb(firestore);
 
-    // ─── UI helpers ───────────────────────────────────────────────────────────
-    const S = {
-      header: {
-        background:"linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%)",
-        color:"white", padding:"10px 16px", borderRadius:"8px 8px 0 0",
-        fontFamily:"'DM Mono',monospace", fontSize:"13px", fontWeight:"600",
-        letterSpacing:"0.5px", textTransform:"uppercase",
-      },
-      card: {
-        border:"1px solid #e2e8f0", borderRadius:"8px", marginBottom:"14px",
-        boxShadow:"0 2px 8px rgba(0,0,0,0.05)", overflow:"hidden",
-      },
-      body: { padding:"14px 16px", background:"white" },
-      th: { padding:"6px 10px", textAlign:"left", fontFamily:"'DM Mono',monospace",
-            fontSize:"11px", color:"#475569", fontWeight:"600",
-            borderBottom:"2px solid #e2e8f0", background:"#f8fafc" },
-      td: { padding:"5px 10px", color:"#1e293b", fontFamily:"'DM Mono',monospace", fontSize:"12px" },
-      tdc: { padding:"5px 8px", textAlign:"center" },
-    };
+      // Real-time listener
+      if(unsubRef.current) unsubRef.current();
+      unsubRef.current=firestore.collection("fpa_reports")
+        .orderBy("year").orderBy("month")
+        .onSnapshot(snap=>{
+          setStatus("connected");
+          setRecords(snap.docs.map(d=>({id:d.id,...d.data()})));
+        },err=>{setStatus("error");console.error(err);});
+    }catch(e){setStatus("error");console.error(e);}
+    return()=>{if(unsubRef.current)unsubRef.current();};
+  },[cfg?.apiKey,cfg?.projectId]);
 
-    function NumInput({ value, onChange, small }) {
-      return (
-        <input type="number" min="0" value={value}
-          onChange={e => onChange(Number(e.target.value)||0)}
-          onFocus={e => e.target.style.borderColor="#2563eb"}
-          onBlur={e => e.target.style.borderColor="#cbd5e1"}
-          style={{ width:small?"52px":"72px", padding:"3px 5px", fontSize:"12px",
-                   border:"1px solid #cbd5e1", borderRadius:"4px", background:"#f8fafc",
-                   textAlign:"center", color:"#0f172a", fontFamily:"'DM Mono',monospace" }} />
-      );
-    }
+  const save=useCallback(async(year,month,data)=>{
+    if(!db) throw new Error("Not connected");
+    const id=`${year}_${String(month).padStart(2,"0")}`;
+    await db.collection("fpa_reports").doc(id).set({year,month,...data,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+  },[db]);
 
-    function SectionHeader({ children }) {
-      return <div style={S.header}>{children}</div>;
-    }
+  return{db,status,records,save};
+}
 
-    function Card({ children }) {
-      return <div style={S.card}>{children}</div>;
-    }
+/* ══════════════════════════════════════════════════════════════
+   AGGREGATE HELPER
+══════════════════════════════════════════════════════════════ */
+function sumRecs(recs){
+  if(!recs||!recs.length)return null;
+  const m={f1:bF1(),f2:bFx(),f3:bFx(),f4:bFx(),f5:bF5()};
+  recs.forEach(r=>{
+    const f1keys=["fsecAppReceived","fsecWithin","fsecNotWithin","totalFsec","nod",
+      "overallNC","overallRN","overallTotal","inspectionUnderConstruction",
+      "fsicWithin","fsicNotWithin","totalFsicOccupancy","ntcNod"];
+    f1keys.forEach(k=>{m.f1[k]+=(r.f1?.[k]||0);});
+    OCC_NC.forEach(o=>{
+      m.f1.occupancy[o.key].nc+=(r.f1?.occupancy?.[o.key]?.nc||0);
+      m.f1.occupancy[o.key].rn+=(r.f1?.occupancy?.[o.key]?.rn||0);
+    });
+    const fxkeys=["newApps","renewalApps","totalApps","structural","totalInspected",
+      "fsicNewWithin","fsicNewNotWithin","fsicRenewWithin","fsicRenewNotWithin","totalFsic",
+      "ntcNonCompliant","ntcCompliant","ntcvNonCompliant","ntcvCompliant",
+      "abatementNonCompliant","abatementCompliant","totalCompliant","closureOrder",
+      "closureFailAbatement","closureFailPay","totalClosure",
+      "overallInspected","overallCompliant","totalNonCompliant"];
+    ["f2","f3","f4"].forEach(fn=>{
+      fxkeys.forEach(k=>{m[fn][k]+=(r[fn]?.[k]||0);});
+      OCC_FX.forEach(o=>{m[fn].occupancy[o.key]+=(r[fn]?.occupancy?.[o.key]||0);});
+    });
+    F5_FEES.forEach(f=>{m.f5[f.key]+=(r.f5?.[f.key]||0);});
+  });
+  return m;
+}
 
-    function FieldRow({ label, children }) {
-      return (
-        <div style={{ display:"flex", alignItems:"center", gap:"10px",
-                      marginBottom:"7px", flexWrap:"wrap" }}>
-          <span style={{ fontSize:"12px", color:"#475569", minWidth:"180px",
-                         fontFamily:"'DM Mono',monospace" }}>{label}</span>
-          {children}
+/* ══════════════════════════════════════════════════════════════
+   UI ATOMS
+══════════════════════════════════════════════════════════════ */
+function NumInput({value,onChange,small}){
+  return <input type="number" min="0" value={value}
+    onChange={e=>onChange(Number(e.target.value)||0)}
+    onFocus={e=>e.target.style.borderColor=T.acc}
+    onBlur={e=>e.target.style.borderColor=T.brd}
+    style={{width:small?"58px":"76px",padding:"4px 5px",fontSize:"12px",
+      background:T.bg,border:`1px solid ${T.brd}`,borderRadius:"5px",
+      color:T.txt,textAlign:"center",fontFamily:"'JetBrains Mono',monospace",
+      transition:"border-color .15s"}}/>;
+}
+function Card({children,style}){
+  return <div style={{background:T.surf,border:`1px solid ${T.brd}`,
+    borderRadius:"8px",marginBottom:"10px",overflow:"hidden",...style}}>{children}</div>;
+}
+function SHdr({children,color}){
+  return <div style={{background:color||`linear-gradient(90deg,${T.accDk},${T.surf2})`,
+    color:"white",padding:"9px 14px",fontFamily:"'JetBrains Mono',monospace",
+    fontSize:"10px",fontWeight:"600",letterSpacing:"0.8px",textTransform:"uppercase",
+    display:"flex",justifyContent:"space-between",alignItems:"center"}}>{children}</div>;
+}
+function FR({label,children}){
+  return <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px",flexWrap:"wrap"}}>
+    <span style={{fontSize:"11px",color:T.sub,minWidth:"190px",
+      fontFamily:"'JetBrains Mono',monospace",lineHeight:"1.3"}}>{label}</span>
+    {children}
+  </div>;
+}
+const TH={padding:"6px 10px",fontFamily:"'JetBrains Mono',monospace",fontSize:"10px",
+  color:T.muted,fontWeight:"600",borderBottom:`1px solid ${T.brd}`,background:T.bg,textAlign:"left"};
+const TD={padding:"5px 9px",fontFamily:"'JetBrains Mono',monospace",
+  fontSize:"11px",color:T.txt,borderBottom:`1px solid ${T.surf2}`};
+const TDC={...TD,textAlign:"center"};
+function Badge({children,color}){
+  return <span style={{background:color||T.accDk,color:"white",
+    fontFamily:"'JetBrains Mono',monospace",fontSize:"9px",
+    padding:"2px 6px",borderRadius:"4px",whiteSpace:"nowrap"}}>{children}</span>;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FORM F1
+══════════════════════════════════════════════════════════════ */
+function F1Form({data,onChange}){
+  const u=(k,v)=>onChange({...data,[k]:v});
+  const uo=(k,s,v)=>onChange({...data,occupancy:{...data.occupancy,[k]:{...data.occupancy[k],[s]:v}}});
+  return <div className="fade">
+    <Card>
+      <SHdr>FSEC — Fire Safety Evaluation Clearance</SHdr>
+      <div style={{padding:"12px 14px"}}>
+        {[["Applications Received","fsecAppReceived"],["FSEC Issued Within Period","fsecWithin"],
+          ["FSEC Issued NOT Within Period","fsecNotWithin"],["Total FSEC Issued","totalFsec"],
+          ["Notice of Disapproval (NOD)","nod"]].map(([l,k])=>(
+          <FR key={k} label={l}><NumInput value={data[k]||0} onChange={v=>u(k,v)}/></FR>
+        ))}
+      </div>
+    </Card>
+    <Card>
+      <SHdr>1st Inspection for FSIC (Occupancy Permit) — By Occupancy Type</SHdr>
+      <div style={{padding:"10px 14px",overflowX:"auto"}}>
+        <table style={{borderCollapse:"collapse",width:"100%",minWidth:"380px"}}>
+          <thead><tr>
+            <th style={TH}>Occupancy Type</th>
+            <th style={{...TH,textAlign:"center"}}>Code</th>
+            <th style={{...TH,textAlign:"center"}}>NC (New)</th>
+            <th style={{...TH,textAlign:"center"}}>RN (Renov.)</th>
+          </tr></thead>
+          <tbody>{OCC_NC.map(o=>(
+            <tr key={o.key} style={{background:"transparent"}}>
+              <td style={TD}>{o.label}</td>
+              <td style={TDC}><Badge>{o.col}</Badge></td>
+              <td style={TDC}><NumInput small value={data.occupancy?.[o.key]?.nc||0} onChange={v=>uo(o.key,"nc",v)}/></td>
+              <td style={TDC}><NumInput small value={data.occupancy?.[o.key]?.rn||0} onChange={v=>uo(o.key,"rn",v)}/></td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+    </Card>
+    <Card>
+      <SHdr>FSIC Occupancy — Issuances & Summary</SHdr>
+      <div style={{padding:"12px 14px"}}>
+        {[["Overall NC","overallNC"],["Overall RN","overallRN"],["Overall Total","overallTotal"],
+          ["Inspection During Construction","inspectionUnderConstruction"],
+          ["FSIC Issued Within Period","fsicWithin"],["FSIC NOT Within Period","fsicNotWithin"],
+          ["Total FSIC for Occupancy","totalFsicOccupancy"],["NTC / NOD for Buildings","ntcNod"]].map(([l,k])=>(
+          <FR key={k} label={l}><NumInput value={data[k]||0} onChange={v=>u(k,v)}/></FR>
+        ))}
+      </div>
+    </Card>
+  </div>;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FORM F2/F3/F4
+══════════════════════════════════════════════════════════════ */
+function InspForm({data,onChange}){
+  const u=(k,v)=>onChange({...data,[k]:v});
+  const uo=(k,v)=>onChange({...data,occupancy:{...data.occupancy,[k]:v}});
+  return <div className="fade">
+    <Card>
+      <SHdr>Applications Received</SHdr>
+      <div style={{padding:"12px 14px"}}>
+        {[["New Applications","newApps"],["Renewal Applications","renewalApps"],["Total Applications","totalApps"]].map(([l,k])=>(
+          <FR key={k} label={l}><NumInput value={data[k]||0} onChange={v=>u(k,v)}/></FR>
+        ))}
+      </div>
+    </Card>
+    <Card>
+      <SHdr>1st Inspection — By Occupancy Type</SHdr>
+      <div style={{padding:"12px 14px"}}>
+        <FR label="Structural Inspected:"><NumInput value={data.structural||0} onChange={v=>u("structural",v)}/></FR>
+        <div style={{overflowX:"auto",marginTop:"8px"}}>
+          <table style={{borderCollapse:"collapse",width:"100%",minWidth:"280px"}}>
+            <thead><tr>
+              <th style={TH}>Occupancy</th>
+              <th style={{...TH,textAlign:"center"}}>Count</th>
+            </tr></thead>
+            <tbody>{OCC_FX.map(o=>(
+              <tr key={o.key}>
+                <td style={TD}>{o.label}</td>
+                <td style={TDC}><NumInput small value={data.occupancy?.[o.key]||0} onChange={v=>uo(o.key,v)}/></td>
+              </tr>
+            ))}</tbody>
+          </table>
         </div>
-      );
-    }
-
-    // ─── F1 Form ──────────────────────────────────────────────────────────────
-    function F1Form({ data, onChange }) {
-      const upd = (f,v) => onChange({...data,[f]:v});
-      const updOcc = (k,s,v) => onChange({...data, occupancy:{...data.occupancy,[k]:{...data.occupancy[k],[s]:v}}});
-      return (
-        <div>
-          <Card>
-            <SectionHeader>FSEC (Fire Safety Evaluation Clearance)</SectionHeader>
-            <div style={S.body}>
-              {[["Applications Received","fsecAppReceived"],["FSEC Issued Within Period","fsecWithin"],
-                ["FSEC Issued NOT Within Period","fsecNotWithin"],["Total FSEC Issued","totalFsec"],
-                ["Notice of Disapproval (NOD)","nod"]].map(([l,k])=>(
-                <FieldRow key={k} label={l}>
-                  <NumInput value={data[k]} onChange={v=>upd(k,v)} />
-                </FieldRow>
-              ))}
-            </div>
-          </Card>
-
-          <Card>
-            <SectionHeader>1st Inspection for FSIC (Occupancy Permit) — By Occupancy Type</SectionHeader>
-            <div style={S.body}>
-              <div style={{overflowX:"auto"}}>
-                <table style={{borderCollapse:"collapse",fontSize:"12px",width:"100%"}}>
-                  <thead>
-                    <tr>
-                      <th style={S.th}>Occupancy Type</th>
-                      <th style={S.th}>NC (New Construction)</th>
-                      <th style={S.th}>RN (Renovation)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {OCCUPANCY_TYPES_NC.map(o=>(
-                      <tr key={o.key} style={{borderBottom:"1px solid #f1f5f9"}}>
-                        <td style={S.td}>{o.label} <span style={{color:"#94a3b8",fontSize:"10px"}}>{o.col}</span></td>
-                        <td style={S.tdc}><NumInput small value={data.occupancy[o.key]?.nc||0} onChange={v=>updOcc(o.key,"nc",v)} /></td>
-                        <td style={S.tdc}><NumInput small value={data.occupancy[o.key]?.rn||0} onChange={v=>updOcc(o.key,"rn",v)} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <SectionHeader>FSIC for Occupancy Permit — Issuances & Summary</SectionHeader>
-            <div style={S.body}>
-              {[["Overall NC","overallNC"],["Overall RN","overallRN"],["Overall Total","overallTotal"],
-                ["Inspection During Construction","inspectionUnderConstruction"],
-                ["FSIC Issued Within Period","fsicWithin"],["FSIC Issued NOT Within Period","fsicNotWithin"],
-                ["Total FSIC for Occupancy","totalFsicOccupancy"],["NTC/NOD for Buildings","ntcNod"]].map(([l,k])=>(
-                <FieldRow key={k} label={l}>
-                  <NumInput value={data[k]} onChange={v=>upd(k,v)} />
-                </FieldRow>
-              ))}
-            </div>
-          </Card>
+        <div style={{marginTop:"10px"}}>
+          <FR label="Total Inspected (1st):"><NumInput value={data.totalInspected||0} onChange={v=>u("totalInspected",v)}/></FR>
         </div>
-      );
-    }
+      </div>
+    </Card>
+    <Card>
+      <SHdr>FSIC Issuances</SHdr>
+      <div style={{padding:"12px 14px"}}>
+        {[["New — Within Period","fsicNewWithin"],["New — NOT Within Period","fsicNewNotWithin"],
+          ["Renewal — Within Period","fsicRenewWithin"],["Renewal — NOT Within Period","fsicRenewNotWithin"],
+          ["Total FSIC Issued","totalFsic"]].map(([l,k])=>(
+          <FR key={k} label={l}><NumInput value={data[k]||0} onChange={v=>u(k,v)}/></FR>
+        ))}
+      </div>
+    </Card>
+    <Card>
+      <SHdr>Re-Inspection / Enforcement</SHdr>
+      <div style={{padding:"12px 14px"}}>
+        {[["NTC Non-Compliant","ntcNonCompliant"],["NTC Compliant (FSIC)","ntcCompliant"],
+          ["NTCV Non-Compliant","ntcvNonCompliant"],["NTCV Compliant (FSIC)","ntcvCompliant"],
+          ["Abatement Non-Compliant","abatementNonCompliant"],["Abatement Compliant","abatementCompliant"],
+          ["Total Compliant Re-Inspection","totalCompliant"],["Closure Order","closureOrder"],
+          ["Closure — Fail Abatement","closureFailAbatement"],["Closure — Fail to Pay","closureFailPay"],
+          ["Total Closure Orders","totalClosure"]].map(([l,k])=>(
+          <FR key={k} label={l}><NumInput value={data[k]||0} onChange={v=>u(k,v)}/></FR>
+        ))}
+      </div>
+    </Card>
+    <Card>
+      <SHdr>Overall Summary</SHdr>
+      <div style={{padding:"12px 14px"}}>
+        {[["Overall No. Inspected","overallInspected"],["Overall No. Compliant","overallCompliant"],
+          ["Total Non-Compliant (After Re-Insp.)","totalNonCompliant"]].map(([l,k])=>(
+          <FR key={k} label={l}><NumInput value={data[k]||0} onChange={v=>u(k,v)}/></FR>
+        ))}
+      </div>
+    </Card>
+  </div>;
+}
 
-    // ─── F2/F3/F4 Inspection Form ─────────────────────────────────────────────
-    function InspectionForm({ data, onChange }) {
-      const upd = (f,v) => onChange({...data,[f]:v});
-      const updOcc = (k,v) => onChange({...data, occupancy:{...data.occupancy,[k]:v}});
-      return (
-        <div>
-          <Card>
-            <SectionHeader>Applications Received</SectionHeader>
-            <div style={S.body}>
-              {[["New Applications","newApps"],["Renewal Applications","renewalApps"],["Total Applications","totalApps"]].map(([l,k])=>(
-                <FieldRow key={k} label={l}><NumInput value={data[k]} onChange={v=>upd(k,v)} /></FieldRow>
-              ))}
-            </div>
-          </Card>
-
-          <Card>
-            <SectionHeader>1st Inspection — By Occupancy Type</SectionHeader>
-            <div style={S.body}>
-              <FieldRow label="Structural Inspected:"><NumInput value={data.structural} onChange={v=>upd("structural",v)} /></FieldRow>
-              <div style={{overflowX:"auto",marginTop:"8px"}}>
-                <table style={{borderCollapse:"collapse",fontSize:"12px",width:"100%"}}>
-                  <thead><tr>
-                    <th style={S.th}>Occupancy Type</th>
-                    <th style={S.th}>Count</th>
-                  </tr></thead>
-                  <tbody>
-                    {OCCUPANCY_TYPES_F2.map(o=>(
-                      <tr key={o.key} style={{borderBottom:"1px solid #f1f5f9"}}>
-                        <td style={S.td}>{o.label}</td>
-                        <td style={S.tdc}><NumInput small value={data.occupancy[o.key]||0} onChange={v=>updOcc(o.key,v)} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div style={{marginTop:"10px"}}>
-                <FieldRow label="Total Inspected (1st):"><NumInput value={data.totalInspected} onChange={v=>upd("totalInspected",v)} /></FieldRow>
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <SectionHeader>FSIC Issuances</SectionHeader>
-            <div style={S.body}>
-              {[["New FSIC — Within Period","fsicNewWithin"],["New FSIC — NOT Within Period","fsicNewNotWithin"],
-                ["Renewal FSIC — Within Period","fsicRenewWithin"],["Renewal FSIC — NOT Within Period","fsicRenewNotWithin"],
-                ["Total FSIC Issued","totalFsic"]].map(([l,k])=>(
-                <FieldRow key={k} label={l}><NumInput value={data[k]} onChange={v=>upd(k,v)} /></FieldRow>
-              ))}
-            </div>
-          </Card>
-
-          <Card>
-            <SectionHeader>Re-Inspection / Compliance Actions</SectionHeader>
-            <div style={S.body}>
-              {[["NTC Non-Compliant","ntcNonCompliant"],["NTC Compliant (FSIC issued)","ntcCompliant"],
-                ["NTCV Non-Compliant","ntcvNonCompliant"],["NTCV Compliant (FSIC issued)","ntcvCompliant"],
-                ["Abatement Non-Compliant","abatementNonCompliant"],["Abatement Compliant","abatementCompliant"],
-                ["Total Compliant (Re-Inspection)","totalCompliant"],["Closure Order","closureOrder"],
-                ["Closure — Fail Abatement Order","closureFailAbatement"],["Closure — Fail to Pay Fine","closureFailPay"],
-                ["Total Closure Orders Issued","totalClosure"]].map(([l,k])=>(
-                <FieldRow key={k} label={l}><NumInput value={data[k]} onChange={v=>upd(k,v)} /></FieldRow>
-              ))}
-            </div>
-          </Card>
-
-          <Card>
-            <SectionHeader>Overall Summary</SectionHeader>
-            <div style={S.body}>
-              {[["Overall No. Inspected","overallInspected"],["Overall No. Compliant","overallCompliant"],
-                ["Total Non-Compliant After Re-Inspection","totalNonCompliant"]].map(([l,k])=>(
-                <FieldRow key={k} label={l}><NumInput value={data[k]} onChange={v=>upd(k,v)} /></FieldRow>
-              ))}
-            </div>
-          </Card>
+/* ══════════════════════════════════════════════════════════════
+   FORM F5
+══════════════════════════════════════════════════════════════ */
+function F5Form({data,onChange}){
+  const u=(k,v)=>onChange({...data,[k]:v});
+  const groups=[...new Set(F5_FEES.map(f=>f.group))];
+  const total=F5_FEES.reduce((s,f)=>s+(Number(data[f.key])||0),0);
+  return <div className="fade">
+    <div style={{background:`linear-gradient(135deg,${T.accDk},${T.bg})`,
+      borderRadius:"10px",padding:"14px 18px",marginBottom:"10px",
+      border:`1px solid ${T.brd}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div>
+        <div style={{color:"rgba(255,255,255,0.45)",fontFamily:"'JetBrains Mono',monospace",fontSize:"10px",letterSpacing:"0.5px"}}>
+          FORM 5/5 — FIRE CODE FEES COLLECTION — ILIGAN CITY
         </div>
-      );
+        <div style={{color:"rgba(255,255,255,0.3)",fontSize:"9px",fontFamily:"'JetBrains Mono',monospace",marginTop:"2px"}}>
+          BFP-01 through BFP-11-b
+        </div>
+      </div>
+      <div style={{textAlign:"right"}}>
+        <div style={{color:T.muted,fontSize:"10px",fontFamily:"'JetBrains Mono',monospace"}}>TOTAL COLLECTION</div>
+        <div style={{color:"#60a5fa",fontFamily:"'JetBrains Mono',monospace",fontSize:"24px",fontWeight:"800"}}>
+          ₱{total.toLocaleString()}
+        </div>
+      </div>
+    </div>
+    {groups.map(g=>{
+      const fees=F5_FEES.filter(f=>f.group===g);
+      const sub=fees.reduce((s,f)=>s+(Number(data[f.key])||0),0);
+      const gc=GC[g]||T.accDk;
+      return <Card key={g}>
+        <SHdr color={`linear-gradient(90deg,${gc},${T.surf2})`}>
+          <span>{g}</span>
+          <span style={{fontSize:"10px",opacity:.7,fontWeight:400}}>₱{sub.toLocaleString()}</span>
+        </SHdr>
+        <div style={{padding:"8px 12px"}}>
+          {fees.map(f=>(
+            <div key={f.key} style={{display:"flex",alignItems:"center",gap:"8px",
+              marginBottom:"5px",padding:"6px 10px",borderRadius:"6px",
+              background:T.bg,border:`1px solid ${T.brd}`}}>
+              <span style={{background:gc,color:"white",fontFamily:"'JetBrains Mono',monospace",
+                fontSize:"9px",padding:"2px 7px",borderRadius:"4px",
+                whiteSpace:"nowrap",minWidth:"100px",textAlign:"center"}}>{f.code}</span>
+              <span style={{flex:1,fontSize:"11px",color:T.sub}}>{f.label}</span>
+              <NumInput value={data[f.key]||0} onChange={v=>u(f.key,v)}/>
+            </div>
+          ))}
+        </div>
+      </Card>;
+    })}
+  </div>;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CHART WRAPPER
+══════════════════════════════════════════════════════════════ */
+function ChartBox({type,data,opts,h}){
+  const ref=useRef();const inst=useRef();
+  useEffect(()=>{
+    if(inst.current){inst.current.destroy();inst.current=null;}
+    if(!ref.current||!data)return;
+    inst.current=new Chart(ref.current,{type,data,
+      options:{responsive:true,maintainAspectRatio:false,animation:{duration:400},...opts}});
+    return()=>{if(inst.current){inst.current.destroy();inst.current=null;}};
+  },[JSON.stringify(data)]);
+  return <div style={{height:h||220,position:"relative"}}><canvas ref={ref}/></div>;
+}
+
+const COPTS={
+  plugins:{legend:{labels:{color:T.sub,font:{family:"Inter",size:10},boxWidth:10,padding:8}}},
+  scales:{x:{ticks:{color:T.muted,font:{size:9}},grid:{color:"rgba(255,255,255,.04)"}},
+          y:{ticks:{color:T.muted,font:{size:9}},grid:{color:"rgba(255,255,255,.04)"}}}};
+const COPTS_NY={...COPTS,indexAxis:"y",
+  scales:{y:{ticks:{color:T.muted,font:{size:9}},grid:{color:"rgba(255,255,255,.04)"}},
+          x:{ticks:{color:T.muted,font:{size:9}},grid:{color:"rgba(255,255,255,.04)"}}}};
+
+/* ══════════════════════════════════════════════════════════════
+   ANALYTICS TAB
+══════════════════════════════════════════════════════════════ */
+function Analytics({records}){
+  const [period,setPeriod]=useState("monthly");
+  const [yr,setYr]=useState(new Date().getFullYear());
+
+  const years=useMemo(()=>{
+    const s=new Set(records.map(r=>r.year));
+    s.add(new Date().getFullYear());
+    return[...s].sort((a,b)=>a-b);
+  },[records]);
+
+  const yrRecs=useMemo(()=>records.filter(r=>r.year===yr),[records,yr]);
+
+  function makeGroups(){
+    if(period==="monthly") return MONTHS.map((mn,i)=>{
+      const found=yrRecs.filter(r=>r.month===i+1);
+      return{label:mn.slice(0,3),r:sumRecs(found)};
+    });
+    if(period==="quarterly") return[1,2,3,4].map(q=>({
+      label:`Q${q} ${yr}`,
+      r:sumRecs(yrRecs.filter(r=>Math.ceil(r.month/3)===q))
+    }));
+    if(period==="semester") return[
+      {label:"Jan–Jun",r:sumRecs(yrRecs.filter(r=>r.month<=6))},
+      {label:"Jul–Dec",r:sumRecs(yrRecs.filter(r=>r.month>6))},
+    ];
+    return[{label:String(yr),r:sumRecs(yrRecs)}];
+  }
+  const G=makeGroups();
+  const L=G.map(g=>g.label);
+  const getTotalFees=r=>r?F5_FEES.reduce((s,f)=>s+(r.f5?.[f.key]||0),0):0;
+
+  // Dataset arrays
+  const fsec=G.map(g=>g.r?.f1?.totalFsec||0);
+  const fsic=G.map(g=>g.r?.f1?.totalFsicOccupancy||0);
+  const bizInsp=G.map(g=>g.r?.f2?.overallInspected||0);
+  const bizComp=G.map(g=>g.r?.f2?.overallCompliant||0);
+  const bizNonC=G.map(g=>g.r?.f2?.totalNonCompliant||0);
+  const feeTot=G.map(g=>getTotalFees(g.r));
+  const fsifD=G.map(g=>(g.r?.f5?.fsifOccupancy||0)+(g.r?.f5?.fsifBusiness||0));
+  const taxD=G.map(g=>["constructionTax","realtyTax","premiumTax","salesTax","proceedsTax"].reduce((s,k)=>s+(g.r?.f5?.[k]||0),0));
+  const closures=G.map(g=>(g.r?.f2?.totalClosure||0)+(g.r?.f3?.totalClosure||0)+(g.r?.f4?.totalClosure||0));
+
+  // Merged year totals
+  const M=sumRecs(yrRecs)||bRec();
+  const occNC=OCC_NC.map(o=>M.f1.occupancy[o.key].nc);
+  const occRN=OCC_NC.map(o=>M.f1.occupancy[o.key].rn);
+  const occBiz=OCC_FX.map(o=>M.f2.occupancy[o.key]||0);
+
+  const totFsec=fsec.reduce((a,b)=>a+b,0);
+  const totFsic=fsic.reduce((a,b)=>a+b,0);
+  const totInsp=bizInsp.reduce((a,b)=>a+b,0);
+  const totFees=feeTot.reduce((a,b)=>a+b,0);
+  const totClose=closures.reduce((a,b)=>a+b,0);
+
+  const kpis=[
+    {icon:"📋",val:totFsec,label:"Total FSEC Issued",color:T.acc},
+    {icon:"✅",val:totFsic,label:"Total FSIC (Occupancy)",color:T.grn},
+    {icon:"🔍",val:totInsp,label:"Business Inspections",color:T.pur},
+    {icon:"💰",val:`₱${totFees.toLocaleString()}`,label:"Total Fees Collected",color:T.amb},
+    {icon:"🔒",val:totClose,label:"Total Closure Orders",color:T.red},
+  ];
+
+  return <div className="fade">
+    {/* Controls */}
+    <div style={{display:"flex",gap:"8px",marginBottom:"14px",flexWrap:"wrap",alignItems:"center"}}>
+      <select value={yr} onChange={e=>setYr(Number(e.target.value))}
+        style={{background:T.bg,border:`1px solid ${T.brd}`,color:T.txt,
+          padding:"6px 10px",borderRadius:"6px",fontSize:"12px",fontFamily:"'JetBrains Mono',monospace"}}>
+        {years.map(y=><option key={y} value={y}>{y}</option>)}
+      </select>
+      <div style={{display:"flex",gap:"3px",background:T.bg,
+        border:`1px solid ${T.brd}`,borderRadius:"7px",padding:"3px"}}>
+        {["monthly","quarterly","semester","annual"].map(p=>(
+          <button key={p} onClick={()=>setPeriod(p)}
+            style={{padding:"5px 12px",border:"none",borderRadius:"5px",cursor:"pointer",
+              fontSize:"11px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600,
+              background:period===p?T.acc:"transparent",color:period===p?"white":T.sub,
+              transition:"all .15s"}}>
+            {p.charAt(0).toUpperCase()+p.slice(1)}
+          </button>
+        ))}
+      </div>
+      {!records.length&&<span style={{color:T.amb,fontSize:"11px",fontFamily:"'JetBrains Mono',monospace"}}>
+        ⚠ No saved data yet — save monthly reports to populate analytics.
+      </span>}
+    </div>
+
+    {/* KPI Strip */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:"8px",marginBottom:"12px"}}>
+      {kpis.map(k=>(
+        <div key={k.label} style={{background:T.surf,border:`1px solid ${T.brd}`,
+          borderRadius:"8px",padding:"10px 12px",borderTop:`3px solid ${k.color}`}}>
+          <div style={{fontSize:"16px",marginBottom:"4px"}}>{k.icon}</div>
+          <div style={{color:k.color,fontFamily:"'JetBrains Mono',monospace",
+            fontSize:"18px",fontWeight:800}}>{typeof k.val==="number"?k.val.toLocaleString():k.val}</div>
+          <div style={{color:T.muted,fontSize:"9px",marginTop:"2px",lineHeight:"1.3"}}>{k.label}</div>
+        </div>
+      ))}
+    </div>
+
+    {/* Row 1: FSEC/FSIC + Compliance */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"10px"}}>
+      <Card>
+        <SHdr>FSEC & FSIC Issuances</SHdr>
+        <div style={{padding:"12px"}}>
+          <ChartBox type="bar" data={{labels:L,datasets:[
+            {label:"FSEC Issued",data:fsec,backgroundColor:"rgba(59,130,246,.75)",borderColor:T.acc,borderWidth:1,borderRadius:3},
+            {label:"FSIC Occupancy",data:fsic,backgroundColor:"rgba(16,185,129,.75)",borderColor:T.grn,borderWidth:1,borderRadius:3},
+          ]}} opts={COPTS}/>
+        </div>
+      </Card>
+      <Card>
+        <SHdr>Business Inspections — Compliant vs Non-Compliant</SHdr>
+        <div style={{padding:"12px"}}>
+          <ChartBox type="bar" data={{labels:L,datasets:[
+            {label:"Total Inspected",data:bizInsp,backgroundColor:"rgba(139,92,246,.6)",borderColor:T.pur,borderWidth:1,borderRadius:3},
+            {label:"Compliant",data:bizComp,backgroundColor:"rgba(16,185,129,.75)",borderColor:T.grn,borderWidth:1,borderRadius:3},
+            {label:"Non-Compliant",data:bizNonC,backgroundColor:"rgba(239,68,68,.65)",borderColor:T.red,borderWidth:1,borderRadius:3},
+          ]}} opts={COPTS}/>
+        </div>
+      </Card>
+    </div>
+
+    {/* Row 2: Fee trend + Closures */}
+    <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:"10px",marginBottom:"10px"}}>
+      <Card>
+        <SHdr>Fee Collection Trend</SHdr>
+        <div style={{padding:"12px"}}>
+          <ChartBox type="line" data={{labels:L,datasets:[
+            {label:"Total Fees",data:feeTot,borderColor:T.amb,backgroundColor:"rgba(245,158,11,.12)",tension:.4,fill:true,pointRadius:4,pointHoverRadius:6},
+            {label:"FSIF",data:fsifD,borderColor:T.acc,backgroundColor:"transparent",tension:.4,pointRadius:3},
+            {label:"Fire Code Tax",data:taxD,borderColor:T.red,backgroundColor:"transparent",tension:.4,pointRadius:3},
+          ]}} opts={COPTS}/>
+        </div>
+      </Card>
+      <Card>
+        <SHdr>Closure Orders</SHdr>
+        <div style={{padding:"12px"}}>
+          <ChartBox type="bar" data={{labels:L,datasets:[
+            {label:"Closure Orders",data:closures,backgroundColor:"rgba(239,68,68,.7)",borderColor:T.red,borderWidth:1,borderRadius:3},
+          ]}} opts={{...COPTS,plugins:{...COPTS.plugins,legend:{display:false}}}}/>
+        </div>
+      </Card>
+    </div>
+
+    {/* Row 3: Occupancy NC/RN + Business occupancy */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"10px"}}>
+      <Card>
+        <SHdr>New Construction — Occupancy NC vs RN ({yr} total)</SHdr>
+        <div style={{padding:"12px"}}>
+          <ChartBox type="bar" h={260} data={{
+            labels:OCC_NC.map(o=>o.label),
+            datasets:[
+              {label:"NC (New)",data:occNC,backgroundColor:"rgba(59,130,246,.75)"},
+              {label:"RN (Renovation)",data:occRN,backgroundColor:"rgba(139,92,246,.75)"},
+            ]}} opts={COPTS_NY}/>
+        </div>
+      </Card>
+      <Card>
+        <SHdr>Business Inspections — By Occupancy Type ({yr} total)</SHdr>
+        <div style={{padding:"12px"}}>
+          <ChartBox type="bar" h={260} data={{
+            labels:OCC_FX.map(o=>o.label),
+            datasets:[{label:"Inspected",data:occBiz,backgroundColor:"rgba(245,158,11,.7)"}]
+          }} opts={{...COPTS_NY,plugins:{...COPTS_NY.plugins,legend:{display:false}}}}/>
+        </div>
+      </Card>
+    </div>
+
+    {/* Row 4: Fee doughnut + Monthly table */}
+    <div style={{display:"grid",gridTemplateColumns:"220px 1fr",gap:"10px"}}>
+      <Card>
+        <SHdr>Fee Categories — {yr}</SHdr>
+        <div style={{padding:"12px",height:"240px",display:"flex",justifyContent:"center"}}>
+          <ChartBox type="doughnut" h={216} data={{
+            labels:["Fire Code Tax","FSIF","Clearance","Installation","Other","COC"],
+            datasets:[{
+              data:[
+                ["constructionTax","realtyTax","premiumTax","salesTax","proceedsTax"].reduce((s,k)=>s+(M.f5[k]||0),0),
+                (M.f5.fsifOccupancy||0)+(M.f5.fsifBusiness||0),
+                (M.f5.storageClearance||0)+(M.f5.conveyanceClearance||0),
+                ["installBuildingService","installAFSS","installFDAS","installKHSS","installFlammable","installLPGas","otherInstall"].reduce((s,k)=>s+(M.f5[k]||0),0),
+                F5_FEES.filter(f=>f.group==="Other Fees").reduce((s,f)=>s+(M.f5[f.key]||0),0),
+                M.f5.cocFees||0,
+              ],
+              backgroundColor:[T.acc,T.grn,T.pur,T.amb,T.red,T.cyn],
+              borderColor:T.bg,borderWidth:2,
+            }]
+          }} opts={{responsive:true,maintainAspectRatio:false,
+            plugins:{legend:{position:"bottom",labels:{color:T.sub,font:{size:9},boxWidth:10,padding:6}}}}}/>
+        </div>
+      </Card>
+      <Card>
+        <SHdr>Monthly Summary Table — {yr}</SHdr>
+        <div style={{padding:"10px",overflowX:"auto"}}>
+          <table style={{borderCollapse:"collapse",width:"100%",fontSize:"11px"}}>
+            <thead><tr>
+              {["Month","FSEC","FSIC Occ.","Biz Apps","Biz Insp.","Compliant","Non-Comp","Closures","Fees ₱"].map(h=>(
+                <th key={h} style={TH}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>{MONTHS.map((mn,i)=>{
+              const r=yrRecs.find(x=>x.month===i+1);
+              const fees=r?F5_FEES.reduce((s,f)=>s+(r.f5?.[f.key]||0),0):null;
+              const cl=r?(r.f2?.totalClosure||0)+(r.f3?.totalClosure||0)+(r.f4?.totalClosure||0):null;
+              const D="-";
+              return <tr key={mn} style={{background:i%2===0?T.bg:"transparent"}}>
+                <td style={{...TD,color:T.sub,fontWeight:r?"600":"400"}}>{mn.slice(0,3)}{r?<span style={{color:T.grn,marginLeft:"4px",fontSize:"8px"}}>●</span>:null}</td>
+                <td style={TDC}>{r?.f1?.totalFsec??D}</td>
+                <td style={TDC}>{r?.f1?.totalFsicOccupancy??D}</td>
+                <td style={TDC}>{r?.f2?.totalApps??D}</td>
+                <td style={TDC}>{r?.f2?.overallInspected??D}</td>
+                <td style={{...TDC,color:r?T.grn:T.muted}}>{r?.f2?.overallCompliant??D}</td>
+                <td style={{...TDC,color:r&&(r.f2?.totalNonCompliant||0)>0?T.red:T.muted}}>{r?.f2?.totalNonCompliant??D}</td>
+                <td style={{...TDC,color:cl>0?T.red:T.muted}}>{cl??D}</td>
+                <td style={{...TDC,color:fees?T.grn:T.muted}}>{fees!=null?`₱${fees.toLocaleString()}`:D}</td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  </div>;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FIREBASE CONFIG MODAL
+══════════════════════════════════════════════════════════════ */
+function FirebaseModal({saved,onSave,onClose}){
+  const [apiKey,setApiKey]=useState(saved?.apiKey||"");
+  const [projectId,setProjectId]=useState(saved?.projectId||"");
+  const [st,setSt]=useState(null);
+  const [busy,setBusy]=useState(false);
+
+  async function test(){
+    if(!apiKey||!projectId){setSt({e:true,t:"Fill both fields."});return;}
+    setBusy(true);setSt(null);
+    try{
+      const url=`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/fpa_reports?pageSize=1&key=${apiKey}`;
+      const r=await fetch(url);
+      if(r.status===200||r.status===404){setSt({e:false,t:"✅ Connected to Firebase project!"});}
+      else if(r.status===403){setSt({e:true,t:"❌ Permission denied — enable Firestore and set rules (see below)."});}
+      else{const t=await r.text();setSt({e:true,t:`❌ Error ${r.status} — check API key & Project ID.`});}
+    }catch{setSt({e:true,t:"❌ Network error. Check your Project ID."});}
+    setBusy(false);
+  }
+
+  const RULES=`// Firestore Security Rules (Firebase Console → Firestore → Rules)
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /fpa_reports/{doc} {
+      allow read, write: if true; // Replace with auth rule in production
     }
+  }
+}`;
 
-    // ─── F5 Form ──────────────────────────────────────────────────────────────
-    function F5Form({ data, onChange }) {
-      const upd = (k,v) => onChange({...data,[k]:v});
-      const groups = [...new Set(F5_FEE_TYPES.map(f=>f.group))];
-      const total = F5_FEE_TYPES.reduce((s,f)=>s+(Number(data[f.key])||0), 0);
+  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,
+    display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
+    <div style={{background:T.surf,border:`1px solid ${T.brd}`,borderRadius:"14px",
+      padding:"24px",width:"100%",maxWidth:"540px",maxHeight:"90vh",overflowY:"auto"}}>
+      {/* Title */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+          <span style={{fontSize:"22px"}}>🔥</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:"14px",color:"white"}}>Connect Firebase Firestore</div>
+            <div style={{color:T.sub,fontSize:"10px",fontFamily:"'JetBrains Mono',monospace"}}>Free • Real-time • No restrictions</div>
+          </div>
+        </div>
+        <button onClick={onClose} style={{background:"transparent",border:"none",color:T.sub,cursor:"pointer",fontSize:"22px",lineHeight:1}}>×</button>
+      </div>
 
-      return (
+      {/* Steps */}
+      <div style={{background:T.bg,border:`1px solid ${T.brd}`,borderRadius:"8px",
+        padding:"12px 14px",marginBottom:"14px",fontSize:"11px",color:T.sub,lineHeight:"1.9"}}>
+        <strong style={{color:"#60a5fa",fontSize:"12px"}}>🚀 Free Setup (5 minutes)</strong><br/>
+        <strong style={{color:T.txt}}>1.</strong> Go to <a href="https://console.firebase.google.com" target="_blank" style={{color:T.acc}}>console.firebase.google.com</a><br/>
+        <strong style={{color:T.txt}}>2.</strong> Create project → <em>Continue</em> → Disable Analytics → <em>Create</em><br/>
+        <strong style={{color:T.txt}}>3.</strong> Left menu → <strong style={{color:T.txt}}>Build → Firestore Database</strong> → <em>Create database</em> → Start in <strong style={{color:T.txt}}>test mode</strong> → <em>Enable</em><br/>
+        <strong style={{color:T.txt}}>4.</strong> Left menu → <strong style={{color:T.txt}}>Project Settings</strong> (gear icon) → copy <strong style={{color:T.txt}}>Project ID</strong><br/>
+        <strong style={{color:T.txt}}>5.</strong> In Project Settings → <strong style={{color:T.txt}}>Web API Key</strong> → copy it<br/>
+        <strong style={{color:T.txt}}>6.</strong> Paste both below → Test → Save ✅
+      </div>
+
+      {/* Inputs */}
+      {[["WEB API KEY","AIzaSy...",apiKey,setApiKey],
+        ["PROJECT ID","your-project-id-xxxxx",projectId,setProjectId]].map(([lb,ph,v,sv])=>(
+        <div key={lb} style={{marginBottom:"10px"}}>
+          <label style={{display:"block",fontSize:"10px",color:T.muted,
+            marginBottom:"3px",fontFamily:"'JetBrains Mono',monospace",letterSpacing:"0.6px"}}>{lb}</label>
+          <input value={v} onChange={e=>sv(e.target.value)} placeholder={ph}
+            style={{width:"100%",background:T.bg,border:`1px solid ${T.brd}`,borderRadius:"6px",
+              color:T.txt,padding:"8px 12px",fontSize:"12px",fontFamily:"'JetBrains Mono',monospace"}}
+            onFocus={e=>e.target.style.borderColor=T.acc}
+            onBlur={e=>e.target.style.borderColor=T.brd}/>
+        </div>
+      ))}
+
+      {/* Status */}
+      {st&&<div style={{marginBottom:"10px",padding:"8px 12px",borderRadius:"6px",fontSize:"11px",
+        background:st.e?"rgba(239,68,68,.1)":"rgba(16,185,129,.1)",
+        color:st.e?T.red:T.grn,border:`1px solid ${st.e?T.red:T.grn}`}}>{st.t}</div>}
+
+      {/* Buttons */}
+      <div style={{display:"flex",gap:"8px",marginBottom:"14px"}}>
+        <button onClick={test} disabled={busy}
+          style={{background:T.acc,color:"white",border:"none",borderRadius:"7px",
+            padding:"9px 18px",cursor:"pointer",fontSize:"12px",fontWeight:600,flex:1}}>
+          {busy?"Testing…":"🔌 Test Connection"}
+        </button>
+        <button onClick={()=>onSave({apiKey,projectId})}
+          style={{background:T.grn,color:"white",border:"none",borderRadius:"7px",
+            padding:"9px 18px",cursor:"pointer",fontSize:"12px",fontWeight:600,flex:1}}>
+          💾 Save & Connect
+        </button>
+      </div>
+
+      {/* Firestore rules */}
+      <details>
+        <summary style={{cursor:"pointer",fontSize:"11px",color:T.acc,userSelect:"none",marginBottom:"4px"}}>
+          📋 Firestore Security Rules (expand to copy)
+        </summary>
+        <pre style={{marginTop:"6px",background:T.bg,border:`1px solid ${T.brd}`,
+          borderRadius:"6px",padding:"10px",fontSize:"10px",color:"#94a3b8",
+          overflowX:"auto",whiteSpace:"pre-wrap",lineHeight:"1.6"}}>{RULES}</pre>
+      </details>
+    </div>
+  </div>;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   EXCEL EXPORT
+══════════════════════════════════════════════════════════════ */
+function doExport(d,year,month){
+  const wb=XLSX.utils.book_new();
+  const label=`${MONTHS[month-1]} ${year}`;
+
+  // F1
+  const f1r=[
+    ["Republic of the Philippines"],["Department of the Interior and Local Government"],
+    ["BUREAU OF FIRE PROTECTION"],[""],
+    ["NATIONWIDE ACCOMPLISHMENT REPORT ON FIRE SAFETY EVALUATION/INSPECTION ACTIVITIES"],[label],
+    ["","FORM 1/5"],["","NEWLY CONSTRUCTED BUILDING, (RENOVATION, REPAIR, MODIFIED)"],
+    ["","City/Municipality","Applications Received","FSEC Within","FSEC NOT Within",
+     "Total FSEC","NOD",...OCC_NC.flatMap(o=>[o.label+" NC",o.label+" RN"]),
+     "Overall NC","Overall RN","Overall Total","Under Constr.",
+     "FSIC Within","FSIC NOT Within","Total FSIC Occ.","NTC/NOD"],
+  ];
+  const r1=["","Iligan City",
+    d.f1.fsecAppReceived,d.f1.fsecWithin,d.f1.fsecNotWithin,d.f1.totalFsec,d.f1.nod];
+  OCC_NC.forEach(o=>{r1.push(d.f1.occupancy?.[o.key]?.nc||0,d.f1.occupancy?.[o.key]?.rn||0);});
+  r1.push(d.f1.overallNC,d.f1.overallRN,d.f1.overallTotal,d.f1.inspectionUnderConstruction,
+    d.f1.fsicWithin,d.f1.fsicNotWithin,d.f1.totalFsicOccupancy,d.f1.ntcNod);
+  f1r.push(r1);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(f1r),"F1_Newly Constructed Building");
+
+  const fxSht=(fk,title,sname)=>{
+    const rows=[[title],
+      ["City/Municipality","New","Renewal","Total","Structural",...OCC_FX.map(o=>o.label),
+       "Total Insp.","FSIC New W","FSIC New NW","FSIC Ren W","FSIC Ren NW","Total FSIC",
+       "NTC NC","NTC Comp","NTCV NC","NTCV Comp","Abate NC","Abate Comp","Total Comp",
+       "Closure","Cl Fail Abate","Cl Fail Pay","Total Cl","Overall Insp","Overall Comp","Total NC"]];
+    rows.push(["Iligan City",d[fk].newApps,d[fk].renewalApps,d[fk].totalApps,d[fk].structural,
+      ...OCC_FX.map(o=>d[fk].occupancy?.[o.key]||0),
+      d[fk].totalInspected,d[fk].fsicNewWithin,d[fk].fsicNewNotWithin,
+      d[fk].fsicRenewWithin,d[fk].fsicRenewNotWithin,d[fk].totalFsic,
+      d[fk].ntcNonCompliant,d[fk].ntcCompliant,d[fk].ntcvNonCompliant,d[fk].ntcvCompliant,
+      d[fk].abatementNonCompliant,d[fk].abatementCompliant,d[fk].totalCompliant,d[fk].closureOrder,
+      d[fk].closureFailAbatement,d[fk].closureFailPay,d[fk].totalClosure,
+      d[fk].overallInspected,d[fk].overallCompliant,d[fk].totalNonCompliant]);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),sname);
+  };
+  fxSht("f2","FORM 2/5 — BUSINESS OPERATIONS","F2_For Business Operations");
+  fxSht("f3","FORM 6 — PEZA ESTABLISHMENTS","F3_For PEZA Establishments");
+  fxSht("f4","FORM 4/5 — GOVERNMENT BUILDINGS","F4_For Government Buildings");
+
+  const f5r=[
+    ["SUMMARY ACCOMPLISHMENT REPORT ON FIRE CODE FEES COLLECTION"],[label],["","FORM 5/5"],
+    ["City/Municipality",...F5_FEES.map(f=>`${f.code} — ${f.label}`),"Total"],
+  ];
+  const fees=F5_FEES.map(f=>Number(d.f5?.[f.key])||0);
+  f5r.push(["Iligan City",...fees,fees.reduce((a,b)=>a+b,0)]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(f5r),"F5_Summary Accomplishment Rep");
+
+  XLSX.writeFile(wb,`FPA_IliganCity_${label.replace(/\s/g,"_")}.xlsx`);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   STATUS DOT
+══════════════════════════════════════════════════════════════ */
+function StatusDot({status}){
+  const map={connected:{c:T.grn,label:"Firebase Live"},connecting:{c:T.amb,label:"Connecting…"},
+    disconnected:{c:T.muted,label:"No DB"},error:{c:T.red,label:"DB Error"}};
+  const {c,label}=map[status]||map.disconnected;
+  return <div style={{display:"flex",alignItems:"center",gap:"5px"}}>
+    <span style={{width:"7px",height:"7px",borderRadius:"50%",background:c,
+      display:"inline-block",...(status==="connecting"?{animation:"pulse 1.5s infinite"}:{})}}/>
+    <span style={{fontSize:"10px",color:c,fontFamily:"'JetBrains Mono',monospace"}}>{label}</span>
+  </div>;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MAIN APP
+══════════════════════════════════════════════════════════════ */
+function App(){
+  const [tab,setTab]=useState("entry");
+  const [form,setForm]=useState("F1");
+  const [yr,setYr]=useState(new Date().getFullYear());
+  const [mo,setMo]=useState(new Date().getMonth()+1);
+  const [fd,setFd]=useState(bRec());
+  const [fbCfg,setFbCfg]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("bfp_fb")||"null");}catch{return null;}
+  });
+  const [showModal,setShowModal]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [msg,setMsg]=useState(null);
+  const [exporting,setExporting]=useState(false);
+
+  const {status,records,save}=useFirebase(fbCfg);
+
+  // Load record for selected period
+  useEffect(()=>{
+    const rec=records.find(r=>r.year===yr&&r.month===mo);
+    if(rec){
+      const{id,year,month,updatedAt,...data}=rec;
+      setFd({f1:data.f1||bF1(),f2:data.f2||bFx(),f3:data.f3||bFx(),f4:data.f4||bFx(),f5:data.f5||bF5()});
+    } else setFd(bRec());
+  },[yr,mo,records]);
+
+  function flash(t,err){setMsg({t,err});setTimeout(()=>setMsg(null),3500);}
+
+  async function handleSave(){
+    if(status!=="connected"){flash("❌ Not connected to Firebase. Click 'Connect DB'.",true);return;}
+    setSaving(true);
+    try{
+      await save(yr,mo,fd);
+      flash("✅ Saved to Firebase!");
+    }catch(e){flash("❌ "+e.message,true);}
+    setSaving(false);
+  }
+
+  // Offline save to localStorage
+  function saveOffline(){
+    try{
+      const key=`bfp_local_${yr}_${mo}`;
+      localStorage.setItem(key,JSON.stringify(fd));
+      flash("✅ Saved locally (offline).");
+    }catch{flash("❌ Local storage failed.",true);}
+  }
+
+  function exportXL(){
+    setExporting(true);
+    setTimeout(()=>{try{doExport(fd,yr,mo);}catch(e){alert(e.message);}setExporting(false);},80);
+  }
+
+  const FORMS=[
+    {id:"F1",label:"F1 · New Construction"},
+    {id:"F2",label:"F2 · Business Ops"},
+    {id:"F3",label:"F3 · PEZA"},
+    {id:"F4",label:"F4 · Government"},
+    {id:"F5",label:"F5 · Fee Collection"},
+  ];
+  const isSaved=records.some(r=>r.year===yr&&r.month===mo);
+
+  return <div style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>
+    {/* ── HEADER ── */}
+    <header style={{height:"50px",background:"#060c16",borderBottom:`1px solid ${T.brd}`,
+      display:"flex",alignItems:"center",padding:"0 16px",gap:"12px",flexShrink:0}}>
+      {/* Brand */}
+      <div style={{display:"flex",alignItems:"center",gap:"8px",minWidth:"220px"}}>
+        <span style={{fontSize:"18px"}}>🔥</span>
         <div>
-          {/* Total Banner */}
-          <div style={{
-            background:"linear-gradient(135deg,#0f2447,#2563eb)", borderRadius:"10px",
-            padding:"14px 20px", display:"flex", justifyContent:"space-between",
-            alignItems:"center", marginBottom:"14px",
-            boxShadow:"0 4px 14px rgba(37,99,235,0.3)"
-          }}>
-            <div>
-              <div style={{color:"rgba(255,255,255,0.7)",fontFamily:"'DM Mono',monospace",fontSize:"11px",marginBottom:"2px"}}>
-                FORM 5/5 — FIRE CODE FEES COLLECTION
-              </div>
-              <div style={{color:"rgba(255,255,255,0.55)",fontFamily:"'DM Mono',monospace",fontSize:"10px"}}>
-                All Fee Categories (BFP-01 through BFP-11-b)
-              </div>
-            </div>
-            <div style={{textAlign:"right"}}>
-              <div style={{color:"rgba(255,255,255,0.6)",fontSize:"11px",fontFamily:"'DM Mono',monospace",marginBottom:"2px"}}>TOTAL COLLECTION</div>
-              <div style={{color:"white",fontFamily:"'DM Mono',monospace",fontSize:"22px",fontWeight:"700"}}>
-                ₱ {total.toLocaleString()}
-              </div>
-            </div>
+          <div style={{fontWeight:800,fontSize:"12px",color:"white",letterSpacing:"0.2px"}}>BFP Iligan City</div>
+          <div style={{color:T.muted,fontSize:"9px",fontFamily:"'JetBrains Mono',monospace"}}>FPA Report System</div>
+        </div>
+      </div>
+
+      {/* Tab switcher (centered) */}
+      <div style={{flex:1,display:"flex",justifyContent:"center"}}>
+        <div style={{display:"flex",gap:"2px",background:T.bg,
+          border:`1px solid ${T.brd}`,borderRadius:"8px",padding:"3px"}}>
+          {[["entry","📝 Data Entry"],["analytics","📊 Analytics"]].map(([id,lb])=>(
+            <button key={id} onClick={()=>setTab(id)}
+              style={{padding:"5px 16px",border:"none",borderRadius:"6px",cursor:"pointer",
+                fontSize:"11px",fontWeight:700,fontFamily:"'JetBrains Mono',monospace",
+                background:tab===id?T.acc:"transparent",color:tab===id?"white":T.sub,
+                transition:"all .15s"}}>
+              {lb}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Right controls */}
+      <div style={{display:"flex",alignItems:"center",gap:"8px",minWidth:"220px",justifyContent:"flex-end"}}>
+        <StatusDot status={status}/>
+        <button onClick={()=>setShowModal(true)}
+          style={{background:"transparent",border:`1px solid ${status==="connected"?T.grn:T.brd}`,
+            color:status==="connected"?T.grn:T.sub,borderRadius:"6px",padding:"4px 10px",
+            cursor:"pointer",fontSize:"10px",fontFamily:"'JetBrains Mono',monospace",fontWeight:600}}>
+          {status==="connected"?"⚙ DB":"🔌 Connect DB"}
+        </button>
+        <button onClick={exportXL} disabled={exporting}
+          style={{background:exporting?"#1e293b":"linear-gradient(135deg,#059669,#047857)",
+            color:"white",border:"none",borderRadius:"6px",padding:"5px 12px",
+            cursor:"pointer",fontSize:"11px",fontWeight:700}}>
+          {exporting?"⏳":"⬇"} Excel
+        </button>
+      </div>
+    </header>
+
+    {/* ── BODY ── */}
+    {tab==="entry"?(
+      <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+        {/* Sidebar */}
+        <div style={{width:"205px",minWidth:"205px",background:"#060c16",
+          borderRight:`1px solid ${T.brd}`,display:"flex",flexDirection:"column",flexShrink:0}}>
+          {/* Period selector */}
+          <div style={{padding:"12px",borderBottom:`1px solid ${T.brd}`}}>
+            <div style={{fontSize:"9px",color:T.muted,fontFamily:"'JetBrains Mono',monospace",
+              letterSpacing:"0.8px",textTransform:"uppercase",marginBottom:"7px"}}>📅 Report Period</div>
+            <select value={yr} onChange={e=>setYr(Number(e.target.value))}
+              style={{width:"100%",background:T.bg,border:`1px solid ${T.brd}`,color:T.txt,
+                padding:"5px 8px",borderRadius:"5px",fontSize:"11px",
+                fontFamily:"'JetBrains Mono',monospace",marginBottom:"5px"}}>
+              {[2023,2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
+            </select>
+            <select value={mo} onChange={e=>setMo(Number(e.target.value))}
+              style={{width:"100%",background:T.bg,border:`1px solid ${T.brd}`,color:T.txt,
+                padding:"5px 8px",borderRadius:"5px",fontSize:"11px",fontFamily:"'JetBrains Mono',monospace"}}>
+              {MONTHS.map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}
+            </select>
           </div>
 
-          {groups.map(group => {
-            const fees = F5_FEE_TYPES.filter(f=>f.group===group);
-            const subtotal = fees.reduce((s,f)=>s+(Number(data[f.key])||0),0);
-            return (
-              <Card key={group}>
-                <div style={{
-                  ...S.header,
-                  display:"flex", justifyContent:"space-between", alignItems:"center"
-                }}>
-                  <span>{group}</span>
-                  <span style={{fontSize:"11px",opacity:0.75,fontWeight:"400"}}>
-                    Subtotal: ₱ {subtotal.toLocaleString()}
-                  </span>
-                </div>
-                <div style={S.body}>
-                  {fees.map(f=>(
-                    <div key={f.key} style={{
-                      display:"flex", alignItems:"center", gap:"10px", marginBottom:"7px",
-                      padding:"7px 10px", borderRadius:"6px", background:"#f8fafc",
-                      border:"1px solid #e2e8f0"
-                    }}>
-                      <span style={{
-                        background:"#1e3a5f", color:"white",
-                        fontFamily:"'DM Mono',monospace", fontSize:"10px",
-                        padding:"3px 8px", borderRadius:"4px", whiteSpace:"nowrap",
-                        letterSpacing:"0.3px", minWidth:"105px", textAlign:"center"
-                      }}>
-                        {f.code}
-                      </span>
-                      <span style={{flex:1, fontSize:"12px", color:"#334155"}}>
-                        {f.label}
-                      </span>
-                      <NumInput value={data[f.key]||0} onChange={v=>upd(f.key,v)} />
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      );
-    }
-
-    // ─── Export ───────────────────────────────────────────────────────────────
-    function exportToExcel(allData, reportDate) {
-      const wb = XLSX.utils.book_new();
-
-      // F1
-      const f1rows = [
-        ["Republic of the Philippines"],
-        ["Department of the Interior and Local Government"],
-        ["BUREAU OF FIRE PROTECTION"],
-        [],
-        ["NATIONWIDE ACCOMPLISHMENT REPORT ON FIRE SAFETY EVALUATION/INSPECTION ACTIVITIES AND SUMMARY ACCOMPLISHMENT ON FIRE CODE FEES COLLECTION"],
-        [reportDate],
-        ["","FORM 1/5"],
-        ["","NEWLY CONSTRUCTED BUILDING, (RENOVATION, REPAIR, MODIFIED)"],
-        ["","City/Municipality","FSEC — Applications Received","FSEC Within Period","FSEC NOT Within","Total FSEC","NOD",
-          ...OCCUPANCY_TYPES_NC.flatMap(o=>[o.label+" NC",o.label+" RN"]),
-          "Overall NC","Overall RN","Overall Total","Under Construction",
-          "FSIC Within","FSIC NOT Within","Total FSIC for Occupancy","NTC/NOD"],
-      ];
-      MUNICIPALITIES.forEach(m => {
-        const d = allData[m]?.f1 || makeBlankF1();
-        const row = ["",m, d.fsecAppReceived, d.fsecWithin, d.fsecNotWithin, d.totalFsec, d.nod];
-        OCCUPANCY_TYPES_NC.forEach(o => { row.push(d.occupancy[o.key]?.nc||0, d.occupancy[o.key]?.rn||0); });
-        row.push(d.overallNC,d.overallRN,d.overallTotal,d.inspectionUnderConstruction,
-                 d.fsicWithin,d.fsicNotWithin,d.totalFsicOccupancy,d.ntcNod);
-        f1rows.push(row);
-      });
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(f1rows), "F1_Newly Constructed Building");
-
-      // F2/F3/F4 helper
-      const fxSheet = (fKey, formLabel, sheetName) => {
-        const rows = [
-          [formLabel],
-          ["City/Municipality","New Apps","Renewal Apps","Total Apps","Structural",
-            ...OCCUPANCY_TYPES_F2.map(o=>o.label),
-            "Total Inspected","FSIC New Within","FSIC New NOT Within",
-            "FSIC Renew Within","FSIC Renew NOT Within","Total FSIC",
-            "NTC Non-Compliant","NTC Compliant","NTCV Non-Compliant","NTCV Compliant",
-            "Abatement Non-Comp","Abatement Compliant","Total Compliant Re-Insp","Closure Order",
-            "Closure Fail Abatement","Closure Fail Pay","Total Closure",
-            "Overall Inspected","Overall Compliant","Total Non-Compliant"],
-        ];
-        MUNICIPALITIES.forEach(m => {
-          const d = allData[m]?.[fKey] || makeBlankFx();
-          rows.push([m, d.newApps, d.renewalApps, d.totalApps, d.structural,
-            ...OCCUPANCY_TYPES_F2.map(o=>d.occupancy[o.key]||0),
-            d.totalInspected, d.fsicNewWithin, d.fsicNewNotWithin,
-            d.fsicRenewWithin, d.fsicRenewNotWithin, d.totalFsic,
-            d.ntcNonCompliant, d.ntcCompliant, d.ntcvNonCompliant, d.ntcvCompliant,
-            d.abatementNonCompliant, d.abatementCompliant, d.totalCompliant, d.closureOrder,
-            d.closureFailAbatement, d.closureFailPay, d.totalClosure,
-            d.overallInspected, d.overallCompliant, d.totalNonCompliant]);
-        });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), sheetName);
-      };
-      fxSheet("f2","FORM 2/5 — FOR BUSINESS OPERATIONS","F2_For Business Operations");
-      fxSheet("f3","FORM 6 — FOR PEZA/OTHER ECONOMIC ZONE ESTABLISHMENTS","F3_For PEZA Establishments");
-      fxSheet("f4","FORM 4/5 — FOR GOVERNMENT BUILDINGS","F4_For Government Buildings");
-
-      // F5
-      const f5rows = [
-        [" SUMMARY ACCOMPLISHMENT REPORT ON FIRE CODE FEES COLLECTION "],
-        [reportDate],
-        ["","FORM 5/5"],
-        ["City/Municipality",...F5_FEE_TYPES.map(f=>`${f.code} — ${f.label}`),"Total"],
-      ];
-      MUNICIPALITIES.forEach(m => {
-        const d = allData[m]?.f5 || makeBlankF5();
-        const fees = F5_FEE_TYPES.map(f=>Number(d[f.key])||0);
-        f5rows.push([m,...fees, fees.reduce((a,b)=>a+b,0)]);
-      });
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(f5rows), "F5_Summary Accomplishment Rep");
-
-      XLSX.writeFile(wb, `FPA_Report_${reportDate.replace(/\s+/g,"_")}.xlsx`);
-    }
-
-    // ─── Main App ─────────────────────────────────────────────────────────────
-    function App() {
-      const [allData, setAllData] = useState(initAllData);
-      const [selectedMuni, setSelectedMuni] = useState(MUNICIPALITIES[0]);
-      const [activeForm, setActiveForm] = useState("F1");
-      const [reportDate, setReportDate] = useState("JANUARY 2026");
-      const [exporting, setExporting] = useState(false);
-
-      const updateForm = useCallback((form, val) => {
-        setAllData(prev => ({
-          ...prev,
-          [selectedMuni]: { ...prev[selectedMuni], [form]: val }
-        }));
-      }, [selectedMuni]);
-
-      const currentData = allData[selectedMuni] || {};
-
-      const FORMS = [
-        { id:"F1", label:"F1 — New Construction" },
-        { id:"F2", label:"F2 — Business Ops" },
-        { id:"F3", label:"F3 — PEZA" },
-        { id:"F4", label:"F4 — Government" },
-        { id:"F5", label:"F5 — Fee Collection" },
-      ];
-
-      const handleExport = () => {
-        setExporting(true);
-        setTimeout(() => {
-          try { exportToExcel(allData, reportDate); }
-          catch(e) { alert("Export error: "+e.message); }
-          setExporting(false);
-        }, 100);
-      };
-
-      return (
-        <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#f0f4ff,#e8f0fe)",display:"flex",flexDirection:"column"}}>
-          {/* Header */}
-          <div style={{
-            background:"linear-gradient(135deg,#0f2447 0%,#1e3a5f 60%,#2563eb 100%)",
-            padding:"14px 20px", display:"flex", alignItems:"center", justifyContent:"space-between",
-            boxShadow:"0 4px 20px rgba(0,0,0,0.25)", flexShrink:0,
-          }}>
-            <div style={{display:"flex",alignItems:"center",gap:"14px"}}>
-              <div style={{width:"40px",height:"40px",borderRadius:"10px",
-                           background:"rgba(255,255,255,0.12)",display:"flex",
-                           alignItems:"center",justifyContent:"center",fontSize:"20px"}}>🔥</div>
-              <div>
-                <div style={{color:"white",fontWeight:"700",fontSize:"15px"}}>Bureau of Fire Protection</div>
-                <div style={{color:"rgba(255,255,255,0.6)",fontSize:"11px",fontFamily:"'DM Mono',monospace"}}>
-                  Fire Prevention Accomplishment Report System
-                </div>
+          {/* Form nav */}
+          <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
+            <div style={{padding:"5px 12px",fontSize:"9px",color:T.muted,letterSpacing:"0.8px",
+              fontFamily:"'JetBrains Mono',monospace",textTransform:"uppercase",marginBottom:"2px"}}>Forms</div>
+            {FORMS.map(f=>(
+              <div key={f.id} onClick={()=>setForm(f.id)}
+                style={{padding:"8px 12px",cursor:"pointer",fontSize:"11px",
+                  fontFamily:"'JetBrains Mono',monospace",
+                  color:form===f.id?"white":T.sub,
+                  background:form===f.id?"rgba(59,130,246,.2)":"transparent",
+                  borderLeft:form===f.id?`3px solid ${T.acc}`:"3px solid transparent",
+                  transition:"all .1s"}}>
+                {f.label}
               </div>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-              <input value={reportDate} onChange={e=>setReportDate(e.target.value)}
-                style={{ background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.3)",
-                         borderRadius:"6px", color:"white", padding:"6px 12px",
-                         fontSize:"12px", fontFamily:"'DM Mono',monospace", width:"145px" }}
-                placeholder="e.g. JANUARY 2026" />
-              <button onClick={handleExport} disabled={exporting} style={{
-                background: exporting ? "#64748b" : "linear-gradient(135deg,#16a34a,#15803d)",
-                color:"white", border:"none", borderRadius:"8px", padding:"8px 16px",
-                cursor: exporting ? "default" : "pointer", fontWeight:"600", fontSize:"13px",
-                boxShadow:"0 2px 8px rgba(22,163,74,0.35)", fontFamily:"'DM Sans',sans-serif"
-              }}>
-                {exporting ? "⏳ Exporting..." : "⬇ Export Excel"}
-              </button>
-            </div>
+            ))}
           </div>
 
-          {/* Body */}
-          <div style={{display:"flex",flex:1,overflow:"hidden",height:"calc(100vh - 68px)"}}>
-            {/* Sidebar */}
-            <div style={{
-              width:"185px",minWidth:"185px",background:"#1e293b",
-              overflowY:"auto",padding:"10px 0",flexShrink:0,
-            }}>
-              <div style={{padding:"8px 14px",color:"#475569",fontSize:"9px",
-                           letterSpacing:"1.2px",fontFamily:"'DM Mono',monospace",
-                           textTransform:"uppercase",marginBottom:"2px"}}>
-                Municipalities
-              </div>
-              {MUNICIPALITIES.map(m=>(
-                <div key={m} onClick={()=>setSelectedMuni(m)} style={{
-                  padding:"7px 14px", cursor:"pointer", fontSize:"11px",
-                  fontFamily:"'DM Mono',monospace",
-                  color: selectedMuni===m ? "white" : "#94a3b8",
-                  background: selectedMuni===m ? "rgba(37,99,235,0.35)" : "transparent",
-                  borderLeft: selectedMuni===m ? "3px solid #2563eb" : "3px solid transparent",
-                  transition:"all 0.12s",
-                }}>
-                  {m}
-                </div>
-              ))}
-            </div>
-
-            {/* Main */}
-            <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-              {/* Tabs */}
-              <div style={{
-                display:"flex",gap:"2px",padding:"10px 14px 0",
-                background:"#f1f5f9",borderBottom:"1px solid #e2e8f0",flexShrink:0,
-              }}>
-                {FORMS.map(f=>(
-                  <button key={f.id} onClick={()=>setActiveForm(f.id)} style={{
-                    padding:"7px 14px", border:"none", borderRadius:"7px 7px 0 0",
-                    cursor:"pointer", fontSize:"12px", fontFamily:"'DM Mono',monospace",
-                    fontWeight:"600",
-                    background: activeForm===f.id ? "white" : "transparent",
-                    color: activeForm===f.id ? "#1e3a5f" : "#64748b",
-                    borderBottom: activeForm===f.id ? "2px solid #2563eb" : "2px solid transparent",
-                    transition:"all 0.12s",
-                  }}>
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Form Area */}
-              <div style={{flex:1,overflowY:"auto",padding:"14px 16px"}}>
-                {/* Location breadcrumb */}
-                <div style={{
-                  marginBottom:"12px", background:"white", borderRadius:"8px",
-                  padding:"9px 14px", border:"1px solid #e2e8f0",
-                  display:"flex", alignItems:"center", gap:"8px",
-                }}>
-                  <span style={{fontSize:"14px"}}>📍</span>
-                  <span style={{fontWeight:"700",color:"#1e3a5f",fontSize:"13px"}}>{selectedMuni}</span>
-                  <span style={{color:"#94a3b8",fontSize:"12px"}}>
-                    — {FORMS.find(f=>f.id===activeForm)?.label}
-                  </span>
-                </div>
-
-                {activeForm==="F1" && <F1Form data={currentData.f1} onChange={v=>updateForm("f1",v)} />}
-                {activeForm==="F2" && <InspectionForm data={currentData.f2} onChange={v=>updateForm("f2",v)} />}
-                {activeForm==="F3" && <InspectionForm data={currentData.f3} onChange={v=>updateForm("f3",v)} />}
-                {activeForm==="F4" && <InspectionForm data={currentData.f4} onChange={v=>updateForm("f4",v)} />}
-                {activeForm==="F5" && <F5Form data={currentData.f5} onChange={v=>updateForm("f5",v)} />}
-              </div>
-            </div>
+          {/* Save buttons */}
+          <div style={{padding:"10px",borderTop:`1px solid ${T.brd}`,display:"flex",flexDirection:"column",gap:"5px"}}>
+            {msg&&<div style={{padding:"6px 8px",borderRadius:"5px",fontSize:"10px",
+              textAlign:"center",fontFamily:"'JetBrains Mono',monospace",lineHeight:"1.4",
+              background:msg.err?"rgba(239,68,68,.15)":"rgba(16,185,129,.15)",
+              color:msg.err?T.red:T.grn}}>{msg.t}</div>}
+            <button onClick={handleSave} disabled={saving}
+              style={{background:saving?"#1e293b":`linear-gradient(135deg,${T.acc},${T.accDk})`,
+                color:"white",border:"none",borderRadius:"7px",padding:"9px",
+                cursor:saving?"default":"pointer",fontSize:"11px",fontWeight:800,
+                fontFamily:"'JetBrains Mono',monospace"}}>
+              {saving?"🔄 Saving…":"💾 Save to Firebase"}
+            </button>
+            <button onClick={saveOffline}
+              style={{background:"transparent",color:T.muted,border:`1px solid ${T.brd}`,
+                borderRadius:"6px",padding:"5px",cursor:"pointer",
+                fontSize:"10px",fontFamily:"'JetBrains Mono',monospace"}}>
+              Save Locally (offline)
+            </button>
           </div>
         </div>
-      );
-    }
 
-    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-  </script>
+        {/* Form area */}
+        <div style={{flex:1,overflowY:"auto",padding:"14px"}}>
+          {/* Breadcrumb */}
+          <div style={{marginBottom:"10px",background:"#060c16",borderRadius:"7px",
+            padding:"7px 12px",border:`1px solid ${T.brd}`,
+            display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}>
+            <span style={{fontSize:"12px"}}>📍</span>
+            <span style={{fontWeight:800,color:"white",fontSize:"12px"}}>Iligan City</span>
+            <span style={{color:T.muted,fontSize:"11px",fontFamily:"'JetBrains Mono',monospace"}}>
+              — {MONTHS[mo-1]} {yr} — {FORMS.find(f=>f.id===form)?.label}
+            </span>
+            {isSaved&&<span style={{marginLeft:"auto",fontSize:"9px",color:T.grn,
+              background:"rgba(16,185,129,.12)",border:`1px solid ${T.grn}`,
+              borderRadius:"4px",padding:"2px 6px",fontFamily:"'JetBrains Mono',monospace"}}>
+              ● SAVED IN FIREBASE
+            </span>}
+          </div>
+
+          {form==="F1"&&<F1Form data={fd.f1} onChange={v=>setFd(p=>({...p,f1:v}))}/>}
+          {form==="F2"&&<InspForm data={fd.f2} onChange={v=>setFd(p=>({...p,f2:v}))}/>}
+          {form==="F3"&&<InspForm data={fd.f3} onChange={v=>setFd(p=>({...p,f3:v}))}/>}
+          {form==="F4"&&<InspForm data={fd.f4} onChange={v=>setFd(p=>({...p,f4:v}))}/>}
+          {form==="F5"&&<F5Form data={fd.f5} onChange={v=>setFd(p=>({...p,f5:v}))}/>}
+        </div>
+      </div>
+    ):(
+      <div style={{flex:1,overflowY:"auto",padding:"14px"}}>
+        <Analytics records={records}/>
+      </div>
+    )}
+
+    {showModal&&(
+      <FirebaseModal saved={fbCfg} onClose={()=>setShowModal(false)}
+        onSave={cfg=>{
+          setFbCfg(cfg);
+          try{localStorage.setItem("bfp_fb",JSON.stringify(cfg));}catch{}
+          setShowModal(false);
+        }}/>
+    )}
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
 </body>
 </html>
